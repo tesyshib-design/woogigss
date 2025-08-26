@@ -1,53 +1,51 @@
-Woogigs Master Item CLI
-Proyek ini adalah alat Command-Line Interface (CLI) berbasis Node.js untuk berinteraksi dengan API manajemen barang di backoffice Woogigs. Dengan alat ini, Anda dapat mencari barang dan memperbarui detailnya, seperti nama, HPP (Harga Pokok Penjualan), dan harga jual, langsung dari terminal.
+✨ Woogigs Master Item CLI ✨
+Alat manajemen barang interaktif dari terminal.
 
-Fitur Utama
-Pencarian Barang: Cari item berdasarkan nama atau SKU. Karena keterbatasan API, pencarian dilakukan secara lokal pada skrip setelah mengambil semua data.
+🚀 Tentang Proyek
+Proyek ini adalah alat Command-Line Interface (CLI) yang dirancang untuk mempermudah pengelolaan data barang di backoffice Woogigs. Dengan skrip Node.js ini, Anda tidak perlu lagi membuka browser untuk mencari atau mengedit detail barang seperti nama, HPP (Harga Pokok Penjualan), dan harga jual.
 
-Pembaruan Data: Edit nama, HPP, dan harga jual untuk item yang sudah ada. Skrip secara otomatis mengambil data lengkap item yang diperlukan oleh API update.
+🎯 Fitur Unggulan
+Pencarian Cepat: Temukan barang instan berdasarkan nama atau SKU.
 
-Interaktif: Antarmuka berbasis teks yang mudah digunakan di terminal.
+Pembaruan Fleksibel: Perbarui nama, HPP, dan harga jual barang yang sudah ada dengan mudah.
 
-Prasyarat
-Pastikan Anda telah menginstal lingkungan berikut di komputer Anda:
+Interaksi Langsung: Antarmuka terminal yang ramah pengguna, ringkas, dan efisien.
 
-Node.js: Versi 14.x atau yang lebih baru.
+⚙️ Prasyarat
+Sebelum memulai, pastikan Anda telah menyiapkan:
 
-npm: Node Package Manager (termasuk dalam instalasi Node.js).
+Node.js: Pastikan Anda menggunakan versi 14.x atau yang lebih baru.
 
-Token API Woogigs: Diperlukan untuk otentikasi. Token ini harus diletakkan dalam variabel TOKEN di dalam skrip.
+Token API Woogigs: Dapatkan token Anda dari Woogigs dan letakkan di dalam variabel TOKEN pada skrip.
 
-Instalasi
-Clone repositori ini atau buat folder baru dan salin file-file proyek.
+⚡ Panduan Instalasi & Penggunaan
+Clone atau Unduh proyek ini ke komputer Anda.
 
-Buka terminal di folder proyek.
+Buka Terminal di direktori proyek.
 
-Jalankan perintah berikut untuk menginstal dependensi yang diperlukan (axios dan qs):
+Instal dependensi dengan perintah:
 
 npm install
 
-Cara Menjalankan Skrip
-Pastikan TOKEN di dalam file index.js (atau nama file skrip Anda) telah diisi dengan token API yang benar.
+Jalankan skrip dengan perintah:
 
-Jalankan skrip dari terminal dengan perintah:
+npm start
 
-node index.js
+Ikuti petunjuk yang muncul di layar untuk berinteraksi dengan API!
 
-Ikuti petunjuk di layar untuk mencari atau mengedit barang.
+📂 Struktur Proyek
+/woogigs-master-item-cli
+├── node_modules/         # Folder dependensi (dibuat otomatis)
+├── .gitignore            # Mengabaikan file yang tidak relevan
+├── package.json          # File konfigurasi proyek & dependensi
+└── index.js              # 📄 Skrip utama
 
-Struktur Proyek
-/nama-folder-proyek-anda
-├── node_modules/         # Folder untuk dependensi (otomatis dibuat)
-├── .gitignore            # File untuk mengabaikan folder node_modules
-├── package.json          # File untuk mengelola dependensi proyek
-└── index.js              # File skrip utama (kode yang telah Anda buat)
+🙏 Kontribusi
+Kami menyambut kontribusi Anda! Jika Anda menemukan bug atau memiliki ide fitur baru, silakan buka issue atau kirim pull request.
 
-Kontribusi
-Kami menerima kontribusi! Jika Anda menemukan bug atau memiliki saran perbaikan, silakan buat issue atau pull request.
+⚠️ Catatan Penting
+Pencarian Lokal: API select tidak mendukung filter, jadi skrip ini akan mengambil semua data terlebih dahulu sebelum memfilternya secara lokal. Ini mungkin terasa lambat jika Anda memiliki data yang sangat besar.
 
-Catatan
-API select tidak mendukung filter, sehingga skrip akan mengambil semua data terlebih dahulu, lalu memfilternya secara lokal. Hal ini mungkin lambat jika data sangat besar.
+Payload Lengkap: API update mewajibkan pengiriman semua data barang, bahkan yang tidak berubah. Skrip ini sudah dirancang untuk menangani hal tersebut secara otomatis.
 
-API update membutuhkan semua kunci data barang (seperti SKU, kategori, unit, dll.) dikirimkan kembali, bahkan jika tidak diubah. Skrip ini telah dirancang untuk menangani hal tersebut secara otomatis.
-
-Jika Anda mengalami masalah autentikasi (X-Auth-Token tidak ada), pastikan token di index.js sudah benar dan tidak kadaluarsa.
+Error Autentikasi: Jika Anda melihat error X-Auth-Token tidak ada, pastikan token API di skrip Anda sudah benar dan belum kedaluwarsa.
