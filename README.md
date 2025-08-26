@@ -38,15 +38,15 @@ Data akan diupdate ke API.
 
 ⚙️ Config
 
-API Select: https://backoffice.woogigs.com/master-item/select
+API Select: https://backoffice.woogigs.com/
 
-API Update: https://backoffice.woogigs.com/master-item/update
+API Update: https://backoffice.woogigs.com/
 
-Token: sudah diinject default (67cebdfd4ed4e) di woogigs.js
+Token: gunakan token yang ada pada akun anda () di woogigs.js
 
 Kalau token berubah, ubah langsung di:
 
-const TOKEN = "67cebdfd4ed4e";
+const TOKEN = "TOKEN";
 
 🖼️ Contoh
 Masukkan nama part / SKU untuk dicari: filter
