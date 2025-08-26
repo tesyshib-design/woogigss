@@ -1,13 +1,15 @@
 {
-  "name": "woogigs-item-updater",
-  "version": "1.1.0",
-  "description": "Script interaktif untuk tarik & update item Woogigs.",
+  "name": "woogigs-cli",
+  "version": "1.0.0",
+  "description": "CLI manajemen sparepart via API Woogigs",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "axios": "^1.7.2",
-    "readline-sync": "^1.4.10"
+    "axios": "^1.6.7",
+    "cli-table3": "^0.6.3",
+    "inquirer": "^9.2.7"
   }
 }
