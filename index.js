@@ -1,93 +1,158 @@
-// woogigs.js
+// index.js
 import fetch from "node-fetch";
 import inquirer from "inquirer";
 import Table from "cli-table3";
 
+// =======================
+// Konfigurasi
+// =======================
 const API_SELECT = "https://backoffice.woogigs.com/master-item/select";
 const API_UPDATE = "https://backoffice.woogigs.com/master-item/update";
+
+// Token yang kamu kasih
 const TOKEN = "67cebdfd4ed4e";
 
-// 🔹 Fetch data item
-async function fetchItems(search = "") {
-  const res = await fetch(API_SELECT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "token": TOKEN,
-    },
-    body: JSON.stringify({
-      search,
-      limit: 20,
+// =======================
+// Fungsi tarik data
+// =======================
+async function fetchItems(keyword) {
+  try {
+    const payload = {
+      search: keyword,
       page: 1,
-    }),
-  });
+      limit: 10,
+    };
 
-  const data = await res.json();
-  return data.data || [];
+    const res = await fetch(API_SELECT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": TOKEN, // sesuai API woogigs
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const text = await res.text();
+
+    // kalau bukan JSON akan error, kita tangani
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      console.error("❌ Respon bukan JSON, kemungkinan token salah / endpoint error");
+      console.error(text);
+      return [];
+    }
+
+    return data?.data || [];
+  } catch (err) {
+    console.error("❌ Error fetchItems:", err.message);
+    return [];
+  }
 }
 
-// 🔹 Update item
+// =======================
+// Fungsi update item
+// =======================
 async function updateItem(item) {
-  const res = await fetch(API_UPDATE, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "token": TOKEN,
+  const answers = await inquirer.prompt([
+    {
+      type: "input",
+      name: "nama",
+      message: `Nama baru untuk ${item.nama_item} (kosongkan jika tidak diubah):`,
     },
-    body: JSON.stringify(item),
-  });
+    {
+      type: "input",
+      name: "qty",
+      message: `Qty baru (${item.qty}):`,
+    },
+    {
+      type: "input",
+      name: "hpp",
+      message: `Harga HPP baru (${item.hpp || 0}):`,
+    },
+    {
+      type: "input",
+      name: "harga_jual",
+      message: `Harga Jual baru (${item.harga_jual || 0}):`,
+    },
+  ]);
 
-  const result = await res.json();
-  console.log("Update Result:", result);
+  const payload = {
+    id: item.id,
+    nama_item: answers.nama || item.nama_item,
+    qty: answers.qty || item.qty,
+    hpp: answers.hpp || item.hpp,
+    harga_jual: answers.harga_jual || item.harga_jual,
+  };
+
+  try {
+    const res = await fetch(API_UPDATE, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": TOKEN,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const text = await res.text();
+    let result;
+    try {
+      result = JSON.parse(text);
+    } catch {
+      console.error("❌ Respon update bukan JSON:", text);
+      return;
+    }
+
+    if (result?.success) {
+      console.log("✅ Item berhasil diupdate!");
+    } else {
+      console.error("❌ Gagal update item:", result?.message || result);
+    }
+  } catch (err) {
+    console.error("❌ Error updateItem:", err.message);
+  }
 }
 
-// 🔹 Tampilkan tabel
-function showTable(items) {
-  const table = new Table({
-    head: ["Code", "SKU", "Name", "Qty", "Harga HPP", "Harga Jual"],
-    colWidths: [10, 10, 40, 10, 15, 15],
-  });
-
-  items.forEach(it => {
-    table.push([it.code, it.sku, it.name, it.qty, it.hpp, it.price]);
-  });
-
-  console.log(table.toString());
-}
-
-// 🔹 Main
+// =======================
+// Main CLI
+// =======================
 async function main() {
-  let searchTerm = await inquirer.prompt({
-    type: "input",
-    name: "search",
-    message: "Masukkan nama part / SKU untuk dicari:",
-  });
+  const { keyword } = await inquirer.prompt([
+    { type: "input", name: "keyword", message: "Masukkan nama part / SKU untuk dicari:" },
+  ]);
 
-  const items = await fetchItems(searchTerm.search);
+  const items = await fetchItems(keyword);
+
   if (items.length === 0) {
     console.log("❌ Tidak ada item ditemukan");
     return;
   }
 
-  showTable(items);
-
-  const { code } = await inquirer.prompt({
-    type: "list",
-    name: "code",
-    message: "Pilih item yang ingin diupdate:",
-    choices: items.map(it => ({ name: `${it.name} (${it.sku})`, value: it.code })),
+  // tampilkan tabel
+  const table = new Table({
+    head: ["ID", "Nama", "Qty", "HPP", "Harga Jual"],
+    colWidths: [10, 30, 10, 15, 15],
   });
 
-  const selected = items.find(it => it.code === code);
+  items.forEach((it) => {
+    table.push([it.id, it.nama_item, it.qty, it.hpp || "-", it.harga_jual || "-"]);
+  });
 
-  const updated = await inquirer.prompt([
-    { type: "input", name: "name", message: "Nama Part:", default: selected.name },
-    { type: "number", name: "qty", message: "Qty:", default: selected.qty },
-    { type: "number", name: "hpp", message: "Harga HPP:", default: selected.hpp },
-    { type: "number", name: "price", message: "Harga Jual:", default: selected.price },
+  console.log(table.toString());
+
+  // pilih item untuk update
+  const { pilih } = await inquirer.prompt([
+    {
+      type: "list",
+      name: "pilih",
+      message: "Pilih item untuk update:",
+      choices: items.map((it) => ({ name: `${it.nama_item} (ID: ${it.id})`, value: it })),
+    },
   ]);
 
-  await updateItem({ ...selected, ...updated });
+  await updateItem(pilih);
 }
 
 main();
