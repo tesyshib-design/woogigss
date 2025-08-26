@@ -1,158 +1,110 @@
 // index.js
 import fetch from "node-fetch";
 import inquirer from "inquirer";
-import Table from "cli-table3";
 
-// =======================
-// Konfigurasi
-// =======================
-const API_SELECT = "https://backoffice.woogigs.com/master-item/select";
-const API_UPDATE = "https://backoffice.woogigs.com/master-item/update";
+const BASE_URL = "https://backoffice.woogigs.com/master-item";
+const TOKEN = "67cebdfd4ed4e"; // masukkan token di sini
 
-// Token yang kamu kasih
-const TOKEN = "67cebdfd4ed4e";
-
-// =======================
-// Fungsi tarik data
-// =======================
-async function fetchItems(keyword) {
+// Fungsi request umum
+async function apiRequest(endpoint, method = "POST", body = {}) {
   try {
-    const payload = {
-      search: keyword,
-      page: 1,
-      limit: 10,
-    };
-
-    const res = await fetch(API_SELECT, {
-      method: "POST",
+    const response = await fetch(`${BASE_URL}/${endpoint}`, {
+      method,
       headers: {
         "Content-Type": "application/json",
-        "Authorization": TOKEN, // sesuai API woogigs
+        "X-Auth-Token": TOKEN, // token harus di header
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     });
 
-    const text = await res.text();
+    const text = await response.text();
 
-    // kalau bukan JSON akan error, kita tangani
-    let data;
     try {
-      data = JSON.parse(text);
-    } catch (e) {
-      console.error("❌ Respon bukan JSON, kemungkinan token salah / endpoint error");
-      console.error(text);
-      return [];
+      return JSON.parse(text);
+    } catch {
+      console.error("❌ Respon bukan JSON:", text);
+      return null;
     }
-
-    return data?.data || [];
   } catch (err) {
-    console.error("❌ Error fetchItems:", err.message);
-    return [];
+    console.error("❌ Error request:", err.message);
+    return null;
   }
 }
 
-// =======================
-// Fungsi update item
-// =======================
-async function updateItem(item) {
-  const answers = await inquirer.prompt([
+// Cari item
+async function searchItem(query) {
+  const data = await apiRequest("select", "POST", { search: query });
+  if (data && data.success && data.data && data.data.length > 0) {
+    return data.data;
+  }
+  console.log("❌ Tidak ada item ditemukan");
+  return [];
+}
+
+// Update item
+async function updateItem(itemId, hpp, hargaJual) {
+  const body = {
+    id: itemId,
+    hpp: hpp,
+    harga_jual: hargaJual,
+  };
+
+  const data = await apiRequest("update", "POST", body);
+  if (data && data.success) {
+    console.log("✅ Update berhasil:", data.message || "");
+  } else {
+    console.log("❌ Update gagal:", data?.message || "Unknown error");
+  }
+}
+
+async function main() {
+  const { query } = await inquirer.prompt([
     {
       type: "input",
-      name: "nama",
-      message: `Nama baru untuk ${item.nama_item} (kosongkan jika tidak diubah):`,
+      name: "query",
+      message: "Masukkan nama part / SKU untuk dicari:",
     },
+  ]);
+
+  const items = await searchItem(query);
+
+  if (items.length === 0) return;
+
+  console.log("\n📦 Hasil pencarian:");
+  items.forEach((item, idx) => {
+    console.log(`${idx + 1}. ${item.nama_item} | HPP: ${item.hpp} | Harga Jual: ${item.harga_jual}`);
+  });
+
+  const { selectedIdx } = await inquirer.prompt([
     {
-      type: "input",
-      name: "qty",
-      message: `Qty baru (${item.qty}):`,
+      type: "list",
+      name: "selectedIdx",
+      message: "Pilih item untuk update:",
+      choices: items.map((item, idx) => ({
+        name: `${item.nama_item} (HPP: ${item.hpp}, Jual: ${item.harga_jual})`,
+        value: idx,
+      })),
     },
+  ]);
+
+  const item = items[selectedIdx];
+
+  const { hpp, hargaJual } = await inquirer.prompt([
     {
       type: "input",
       name: "hpp",
-      message: `Harga HPP baru (${item.hpp || 0}):`,
+      message: `Masukkan HPP baru (sekarang ${item.hpp}):`,
+      validate: (val) => (!isNaN(val) ? true : "Harus angka"),
     },
     {
       type: "input",
-      name: "harga_jual",
-      message: `Harga Jual baru (${item.harga_jual || 0}):`,
+      name: "hargaJual",
+      message: `Masukkan Harga Jual baru (sekarang ${item.harga_jual}):`,
+      validate: (val) => (!isNaN(val) ? true : "Harus angka"),
     },
   ]);
 
-  const payload = {
-    id: item.id,
-    nama_item: answers.nama || item.nama_item,
-    qty: answers.qty || item.qty,
-    hpp: answers.hpp || item.hpp,
-    harga_jual: answers.harga_jual || item.harga_jual,
-  };
-
-  try {
-    const res = await fetch(API_UPDATE, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": TOKEN,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const text = await res.text();
-    let result;
-    try {
-      result = JSON.parse(text);
-    } catch {
-      console.error("❌ Respon update bukan JSON:", text);
-      return;
-    }
-
-    if (result?.success) {
-      console.log("✅ Item berhasil diupdate!");
-    } else {
-      console.error("❌ Gagal update item:", result?.message || result);
-    }
-  } catch (err) {
-    console.error("❌ Error updateItem:", err.message);
-  }
-}
-
-// =======================
-// Main CLI
-// =======================
-async function main() {
-  const { keyword } = await inquirer.prompt([
-    { type: "input", name: "keyword", message: "Masukkan nama part / SKU untuk dicari:" },
-  ]);
-
-  const items = await fetchItems(keyword);
-
-  if (items.length === 0) {
-    console.log("❌ Tidak ada item ditemukan");
-    return;
-  }
-
-  // tampilkan tabel
-  const table = new Table({
-    head: ["ID", "Nama", "Qty", "HPP", "Harga Jual"],
-    colWidths: [10, 30, 10, 15, 15],
-  });
-
-  items.forEach((it) => {
-    table.push([it.id, it.nama_item, it.qty, it.hpp || "-", it.harga_jual || "-"]);
-  });
-
-  console.log(table.toString());
-
-  // pilih item untuk update
-  const { pilih } = await inquirer.prompt([
-    {
-      type: "list",
-      name: "pilih",
-      message: "Pilih item untuk update:",
-      choices: items.map((it) => ({ name: `${it.nama_item} (ID: ${it.id})`, value: it })),
-    },
-  ]);
-
-  await updateItem(pilih);
+  await updateItem(item.id, hpp, hargaJual);
 }
 
 main();
