@@ -1,110 +1,97 @@
-// index.js
 import fetch from "node-fetch";
 import inquirer from "inquirer";
 
-const BASE_URL = "https://backoffice.woogigs.com/master-item";
-const TOKEN = "67cebdfd4ed4e"; // masukkan token di sini
+const API_BASE = "https://backoffice.woogigs.com";
+const TOKEN = "GANTI_DENGAN_TOKEN"; // isi token kamu
 
-// Fungsi request umum
-async function apiRequest(endpoint, method = "POST", body = {}) {
+// 🔍 Cari item
+async function cariItem(keyword) {
+  const res = await fetch(`${API_BASE}/master-item/select`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Auth-Token": TOKEN,
+    },
+    body: JSON.stringify({ keyword }),
+  });
+
+  const text = await res.text();
+  let data;
   try {
-    const response = await fetch(`${BASE_URL}/${endpoint}`, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        "X-Auth-Token": TOKEN, // token harus di header
-      },
-      body: JSON.stringify(body),
-    });
+    data = JSON.parse(text);
+  } catch {
+    console.error("❌ Respon bukan JSON:\n", text);
+    return null;
+  }
 
-    const text = await response.text();
-
-    try {
-      return JSON.parse(text);
-    } catch {
-      console.error("❌ Respon bukan JSON:", text);
-      return null;
-    }
-  } catch (err) {
-    console.error("❌ Error request:", err.message);
+  if (data.success && data.data?.length > 0) {
+    return data.data;
+  } else {
+    console.log("❌ Tidak ada item ditemukan");
     return null;
   }
 }
 
-// Cari item
-async function searchItem(query) {
-  const data = await apiRequest("select", "POST", { search: query });
-  if (data && data.success && data.data && data.data.length > 0) {
-    return data.data;
+// ✏️ Update harga
+async function updateHarga(id, hargaBaru) {
+  const res = await fetch(`${API_BASE}/master-item/update`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Auth-Token": TOKEN,
+    },
+    body: JSON.stringify({
+      id,
+      harga: hargaBaru,
+    }),
+  });
+
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    console.error("❌ Respon update bukan JSON:\n", text);
+    return null;
   }
-  console.log("❌ Tidak ada item ditemukan");
-  return [];
-}
 
-// Update item
-async function updateItem(itemId, hpp, hargaJual) {
-  const body = {
-    id: itemId,
-    hpp: hpp,
-    harga_jual: hargaJual,
-  };
-
-  const data = await apiRequest("update", "POST", body);
-  if (data && data.success) {
-    console.log("✅ Update berhasil:", data.message || "");
+  if (data.success) {
+    console.log(`✅ Harga item ID ${id} berhasil diperbarui jadi Rp${hargaBaru}`);
   } else {
-    console.log("❌ Update gagal:", data?.message || "Unknown error");
+    console.log("❌ Gagal update harga:", data.message);
   }
 }
 
 async function main() {
-  const { query } = await inquirer.prompt([
-    {
-      type: "input",
-      name: "query",
-      message: "Masukkan nama part / SKU untuk dicari:",
-    },
+  const { keyword } = await inquirer.prompt([
+    { name: "keyword", message: "Masukkan nama part / SKU untuk dicari:" },
   ]);
 
-  const items = await searchItem(query);
+  const items = await cariItem(keyword);
+  if (!items) return;
 
-  if (items.length === 0) return;
-
-  console.log("\n📦 Hasil pencarian:");
-  items.forEach((item, idx) => {
-    console.log(`${idx + 1}. ${item.nama_item} | HPP: ${item.hpp} | Harga Jual: ${item.harga_jual}`);
+  console.log("\n📦 Item ditemukan:");
+  items.forEach((item, i) => {
+    console.log(`${i + 1}. ${item.nama} | ID: ${item.id} | Harga: Rp${item.harga}`);
   });
 
-  const { selectedIdx } = await inquirer.prompt([
+  const { pilih } = await inquirer.prompt([
     {
       type: "list",
-      name: "selectedIdx",
-      message: "Pilih item untuk update:",
-      choices: items.map((item, idx) => ({
-        name: `${item.nama_item} (HPP: ${item.hpp}, Jual: ${item.harga_jual})`,
-        value: idx,
+      name: "pilih",
+      message: "Pilih item untuk update harga:",
+      choices: items.map((it) => ({
+        name: `${it.nama} (Rp${it.harga})`,
+        value: it,
       })),
     },
   ]);
 
-  const item = items[selectedIdx];
-
-  const { hpp, hargaJual } = await inquirer.prompt([
-    {
-      type: "input",
-      name: "hpp",
-      message: `Masukkan HPP baru (sekarang ${item.hpp}):`,
-      validate: (val) => (!isNaN(val) ? true : "Harus angka"),
-    },
-    {
-      type: "input",
-      name: "hargaJual",
-      message: `Masukkan Harga Jual baru (sekarang ${item.harga_jual}):`,
-      validate: (val) => (!isNaN(val) ? true : "Harus angka"),
-    },
+  const { hargaBaru } = await inquirer.prompt([
+    { name: "hargaBaru", message: "Masukkan harga baru:", validate: (val) => !isNaN(val) },
   ]);
 
-  await updateItem(item.id, hpp, hargaJual);
+  await updateHarga(pilih.id, parseInt(hargaBaru));
 }
 
 main();
