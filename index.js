@@ -1,97 +1,129 @@
-const axios = require("axios");
-const readline = require("readline-sync");
+import axios from "axios";
+import inquirer from "inquirer";
+import Table from "cli-table3";
 
-// Ganti token sesuai milik Anda
-const API_TOKEN = "67cebdfd4ed4e";
-const BASE_URL = "https://backoffice.woogigs.com/master-item";
+// === SETTING API ===
+const API_BASE = "https://api.woogigs.com"; // ganti ke endpoint asli
+const TOKEN = "ISI_TOKEN_DISINI"; // ganti token auth
 
-const headers = {
-  Authorization: `Bearer ${API_TOKEN}`,
-  "Content-Type": "application/json",
-};
-
-// 🔹 Fungsi ambil data item
-async function getItems() {
+// === Fungsi ambil data ===
+async function fetchItems() {
   try {
-    const res = await axios.get(`${BASE_URL}/list`, { headers });
-    return res.data.data; // asumsi payload -> { success:true, data:[...] }
+    const res = await axios.get(`${API_BASE}/items`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+    return res.data.items || []; // sesuaikan struktur API
   } catch (err) {
-    console.error("❌ Gagal ambil data:", err.response?.data || err.message);
+    console.error("❌ Gagal ambil data:", err.message);
     return [];
   }
 }
 
-// 🔹 Fungsi update item
-async function updateItem({ code, name, qty, hpp, harga_jual }) {
+// === Fungsi tampilkan tabel ===
+function printTable(items, limit = 10) {
+  const table = new Table({
+    head: ["Code", "SKU", "Nama", "Qty", "H.Jual"],
+    colWidths: [10, 10, 40, 8, 12],
+  });
+
+  items.slice(0, limit).forEach((item) => {
+    table.push([
+      item.id || "-",
+      item.sku || "-",
+      item.name || "-",
+      item.qty || 0,
+      item.harga_jual || 0,
+    ]);
+  });
+
+  console.log(table.toString());
+}
+
+// === Fungsi update item ===
+async function updateItem(itemId, payload) {
   try {
-    const res = await axios.put(
-      `${BASE_URL}/update/${code}`,
-      { name, qty, hpp, harga_jual },
-      { headers }
-    );
-    console.log("✅ Update berhasil:", res.data);
+    await axios.put(`${API_BASE}/items/${itemId}`, payload, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+    console.log("✅ Data berhasil diupdate!");
   } catch (err) {
-    console.error("❌ Gagal update:", err.response?.data || err.message);
+    console.error("❌ Gagal update:", err.message);
   }
 }
 
-// 🔹 Main
-(async () => {
-  const items = await getItems();
-  if (!items.length) return;
+// === Main Program ===
+async function main() {
+  const items = await fetchItems();
+  if (items.length === 0) return;
 
-  console.log(`\n📦 Data Item Woogigs (${items.length} ditemukan):`);
-  items.slice(0, 10).forEach((it, i) => {
-    console.log(
-      `${i + 1}. [${it.code}] ${it.name} | Qty: ${it.qty} | HPP: ${it.hpp} | Harga Jual: ${it.harga_jual}`
-    );
-  });
-  console.log("\n(Catatan: hanya tampil 10 item pertama)");
+  console.log("\n📦 Data Sparepart (10 pertama):");
+  printTable(items);
 
-  // Cari item
-  const keyword = readline.question("\n🔍 Cari nama/sku item: ");
-  const filtered = items.filter(
-    (it) =>
-      it.name.toLowerCase().includes(keyword.toLowerCase()) ||
-      it.sku.toLowerCase().includes(keyword.toLowerCase())
+  // Search
+  const { keyword } = await inquirer.prompt([
+    { type: "input", name: "keyword", message: "Cari nama / SKU:" },
+  ]);
+
+  const results = items.filter(
+    (x) =>
+      x.name.toLowerCase().includes(keyword.toLowerCase()) ||
+      (x.sku && x.sku.toLowerCase().includes(keyword.toLowerCase()))
   );
 
-  if (!filtered.length) {
-    console.log("⚠️ Item tidak ditemukan.");
+  if (results.length === 0) {
+    console.log("❌ Tidak ada hasil.");
     return;
   }
 
-  filtered.forEach((it, i) =>
-    console.log(`${i + 1}. [${it.code}] ${it.name} (SKU: ${it.sku})`)
-  );
+  // Pilih item
+  const { chosen } = await inquirer.prompt([
+    {
+      type: "list",
+      name: "chosen",
+      message: "Pilih item untuk edit:",
+      choices: results.map((x, i) => ({
+        name: `${x.name} (SKU: ${x.sku}, Qty: ${x.qty})`,
+        value: x,
+      })),
+    },
+  ]);
 
-  const idx = readline.questionInt("\nPilih nomor item: ") - 1;
-  const selected = filtered[idx];
-  if (!selected) {
-    console.log("⚠️ Pilihan tidak valid.");
-    return;
-  }
+  // Edit field
+  const answers = await inquirer.prompt([
+    {
+      type: "input",
+      name: "name",
+      message: "Nama baru (enter skip):",
+      default: chosen.name,
+    },
+    {
+      type: "input",
+      name: "qty",
+      message: "Qty baru (enter skip):",
+      default: chosen.qty,
+    },
+    {
+      type: "input",
+      name: "harga_hpp",
+      message: "Harga HPP baru (enter skip):",
+      default: chosen.harga_hpp,
+    },
+    {
+      type: "input",
+      name: "harga_jual",
+      message: "Harga Jual baru (enter skip):",
+      default: chosen.harga_jual,
+    },
+  ]);
 
-  console.log(`\n✏️ Edit item: [${selected.code}] ${selected.name}`);
+  const payload = {
+    name: answers.name,
+    qty: Number(answers.qty),
+    harga_hpp: Number(answers.harga_hpp),
+    harga_jual: Number(answers.harga_jual),
+  };
 
-  const newName =
-    readline.question(`Nama baru (${selected.name}): `) || selected.name;
-  const newQty =
-    readline.questionInt(`Qty baru (${selected.qty}): `) || selected.qty;
-  const newHpp =
-    readline.questionInt(`HPP baru (${selected.hpp || 0}): `) ||
-    selected.hpp ||
-    0;
-  const newHargaJual =
-    readline.questionInt(`Harga Jual baru (${selected.harga_jual || 0}): `) ||
-    selected.harga_jual ||
-    0;
+  await updateItem(chosen.id, payload);
+}
 
-  await updateItem({
-    code: selected.code,
-    name: newName,
-    qty: newQty,
-    hpp: newHpp,
-    harga_jual: newHargaJual,
-  });
-})();
+main();
