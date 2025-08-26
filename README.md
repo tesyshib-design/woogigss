@@ -1,24 +1,22 @@
-woogigs-item-updater/
-│── index.js
-│── package.json
-│── README.md
+# Woogigs Inventory CLI
 
+CLI sederhana untuk **menampilkan, mencari, dan update data sparepart** dari API Woogigs Backoffice langsung lewat terminal.
 
+## ✨ Fitur
+- Cari item berdasarkan **nama / SKU**
+- Tampilkan hasil dalam bentuk **tabel di terminal**
+- Update:
+  - Nama Part
+  - Qty
+  - Harga HPP
+  - Harga Jual
+- Otomatis kirim perubahan ke endpoint `update`
 
-# Woogigs Item Updater
+## 📦 Install
+```bash
+# clone repo
+git clone https://github.com/username/woogigs-cli.git
+cd woogigs-cli
 
-Script Node.js untuk membaca dan mengupdate data item di **Woogigs Backoffice API**.  
-Fitur:
-- Update **nama part**
-- Update **qty stok**
-- Update **harga HPP**
-- Update **harga jual**
-
----
-
-## ⚙️ Instalasi
-
-1. Clone repo ini:
-   ```bash
-   git clone https://github.com/USERNAME/woogigs-item-updater.git
-   cd woogigs-item-updater
+# install dependencies
+npm install
