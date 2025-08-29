@@ -611,6 +611,142 @@ async function analyzeStockDiscrepancy() {
     });
 }
 
+/**
+ * [FITUR BARU] Membandingkan data transaksi Woogigs dengan data yang ditempel.
+ */
+async function compareWithPastedData() {
+    const red = "\x1b[31m";
+    const green = "\x1b[32m";
+    const yellow = "\x1b[33m";
+    const cyan = "\x1b[36m";
+    const reset = "\x1b[0m";
+
+    console.log(`\nSilakan salin data dari Google Sheet Anda (termasuk header).`);
+    console.log(`Format yang diharapkan per baris: ${yellow}Tanggal, Nama Barang, Qty, Plat Mobil${reset}`);
+    console.log(`Contoh: ${cyan}28/08/2025, SHELL HELIX HX6 10W-40 1L, 4, B 2989 QN${reset}`);
+    console.log(`Setelah selesai menempelkan, ketik ${green}'SELESAI'${reset} di baris baru dan tekan Enter.`);
+    
+    let lines = [];
+    rl.on('line', function(line) {
+        if (line.toLowerCase().trim() === 'selesai') {
+            rl.removeAllListeners('line');
+            processPastedData(lines);
+        } else {
+            lines.push(line);
+        }
+    });
+
+    async function processPastedData(pastedLines) {
+        rl.question("Masukkan Tanggal Mulai (YYYY-MM-DD) untuk perbandingan: ", (startDateInput) => {
+            rl.question("Masukkan Tanggal Akhir (YYYY-MM-DD) untuk perbandingan: ", async (endDateInput) => {
+                const dateStart = startDateInput.trim();
+                const dateEnd = endDateInput.trim();
+                const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+                if (!dateRegex.test(dateStart) || !dateRegex.test(dateEnd)) {
+                    console.log("⚠️ Format tanggal (YYYY-MM-DD) tidak valid.");
+                    mainMenu();
+                    return;
+                }
+
+                // 1. Proses data yang ditempel
+                console.log("\n⏳ Memproses data yang ditempel...");
+                const manualData = new Map();
+                const rows = pastedLines.slice(1); // Abaikan header
+                rows.forEach(row => {
+                    const cols = row.split(',');
+                    if (cols.length >= 4) {
+                        const dateParts = cols[0].trim().split('/');
+                        if (dateParts.length === 3) {
+                            const date = `${dateParts[2]}-${dateParts[1].padStart(2, '0')}-${dateParts[0].padStart(2, '0')}`;
+                            const name = cols[1].trim().toLowerCase();
+                            const qty = parseFloat(cols[2].trim());
+                            const plate = cols[3].trim().toUpperCase();
+                            if (date && name && !isNaN(qty) && plate) {
+                                const key = `${date}-${name}-${plate}`;
+                                manualData.set(key, { ...manualData.get(key), qty: (manualData.get(key)?.qty || 0) + qty, found: false });
+                            }
+                        }
+                    }
+                });
+                console.log(`✅ Berhasil memproses ${manualData.size} entri unik dari data manual.`);
+
+                // 2. Ambil data dari Woogigs
+                console.log("\n⏳ Mengambil data transaksi dari Woogigs...");
+                const payload = { date_start: `${dateStart} 00:00:00`, date_end: `${dateEnd} 23:59:59`, with_detail: 1 };
+                const transactionData = await callApi("/report-transaction/sales_complete", payload);
+                if (!transactionData || !transactionData.success) {
+                    console.log("❌ Gagal mendapatkan riwayat transaksi dari Woogigs.");
+                    mainMenu();
+                    return;
+                }
+                
+                // 3. Proses data Woogigs
+                const woogigsData = new Map();
+                const transactions = Array.isArray(transactionData.data) ? transactionData.data : [];
+                for (const transaction of transactions) {
+                    if (transaction.void_status === 0 && Array.isArray(transaction.detail)) {
+                        for (const itemDetail of transaction.detail) {
+                            const date = transaction.date.split(' ')[0];
+                            const name = itemDetail.item_name.toLowerCase();
+                            const qty = parseFloat(itemDetail.qty);
+                            let plate = transaction.notes || (transaction.customer_name ? transaction.customer_name.split('/')[0].trim() : 'N/A');
+                            plate = plate.toUpperCase();
+                            const key = `${date}-${name}-${plate}`;
+                            woogigsData.set(key, { ...woogigsData.get(key), qty: (woogigsData.get(key)?.qty || 0) + qty, found: false });
+                        }
+                    }
+                }
+                console.log(`✅ Berhasil memproses ${woogigsData.size} entri unik dari Woogigs.`);
+
+                // 4. Bandingkan data
+                const mismatches = [];
+                const onlyInManual = [];
+                const onlyInWoogigs = [];
+
+                for (const [key, manualEntry] of manualData.entries()) {
+                    if (woogigsData.has(key)) {
+                        const woogigsEntry = woogigsData.get(key);
+                        if (manualEntry.qty !== woogigsEntry.qty) {
+                            mismatches.push({ key, manualQty: manualEntry.qty, woogigsQty: woogigsEntry.qty });
+                        }
+                        woogigsEntry.found = true;
+                        manualEntry.found = true;
+                    }
+                }
+
+                manualData.forEach((value, key) => { if (!value.found) onlyInManual.push({ key, qty: value.qty }); });
+                woogigsData.forEach((value, key) => { if (!value.found) onlyInWoogigs.push({ key, qty: value.qty }); });
+
+                // 5. Tampilkan hasil
+                console.log("\n\n✅ Hasil Perbandingan Transaksi:");
+                console.log("==========================================================");
+
+                if (mismatches.length > 0) {
+                    console.log(`\n${yellow}🟡 Perbedaan Qty Ditemukan (${mismatches.length}):${reset}`);
+                    mismatches.forEach(m => console.log(`   - ${m.key} | Manual: ${m.manualQty}, Woogigs: ${m.woogigsQty}`));
+                }
+
+                if (onlyInManual.length > 0) {
+                    console.log(`\n${red}🔴 Transaksi HANYA di Catatan Manual (${onlyInManual.length}):${reset}`);
+                    onlyInManual.forEach(m => console.log(`   - ${m.key} | Qty: ${m.qty}`));
+                }
+
+                if (onlyInWoogigs.length > 0) {
+                    console.log(`\n${cyan}🔵 Transaksi HANYA di Woogigs (${onlyInWoogigs.length}):${reset}`);
+                    onlyInWoogigs.forEach(m => console.log(`   - ${m.key} | Qty: ${m.qty}`));
+                }
+
+                if (mismatches.length === 0 && onlyInManual.length === 0 && onlyInWoogigs.length === 0) {
+                    console.log(`\n${green}✅ Semua data transaksi antara catatan manual dan Woogigs cocok!${reset}`);
+                }
+                console.log("==========================================================");
+
+                mainMenu();
+            });
+        });
+    }
+}
+
 
 /**
  * Mengekspor seluruh data stok ke file CSV.
@@ -685,6 +821,7 @@ function mainMenu() {
       "Laporan Rekap Penjualan Bulanan",
       "Cek Detail Nota",
       "Analisis Selisih Stok",
+      "Rekonsiliasi Stok via Tempel Data",
       "Ekspor Stok ke CSV",
       "Keluar"
   ];
@@ -705,8 +842,9 @@ function mainMenu() {
       case "5": monthlySalesSummaryForAllItems(); break;
       case "6": checkReceiptDetails(); break;
       case "7": analyzeStockDiscrepancy(); break;
-      case "8": exportStockToCsv(); break;
-      case "9":
+      case "8": compareWithPastedData(); break;
+      case "9": exportStockToCsv(); break;
+      case "10":
         console.log(`\n${green}Terima kasih telah menggunakan tool ini!${reset}`);
         rl.close();
         break;
