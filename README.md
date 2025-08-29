@@ -1,51 +1,68 @@
-✨ Woogigs Master Item CLI ✨
-Alat manajemen barang interaktif dari terminal.
+Woogigs CLI Management Tool
+Deskripsi
+Woogigs CLI Tool adalah sebuah skrip Command-Line Interface (CLI) yang dibuat dengan Node.js untuk berinteraksi dengan API Woogigs. Alat ini bertujuan untuk mempermudah manajemen data master barang, melacak transaksi, dan menganalisis stok langsung dari terminal Anda.
 
-🚀 Tentang Proyek
-Proyek ini adalah alat Command-Line Interface (CLI) yang dirancang untuk mempermudah pengelolaan data barang di backoffice Woogigs. Dengan skrip Node.js ini, Anda tidak perlu lagi membuka browser untuk mencari atau mengedit detail barang seperti nama, HPP (Harga Pokok Penjualan), dan harga jual.
+Proyek ini dikembangkan oleh YaelahYuds.
 
-🎯 Fitur Unggulan
-Pencarian Cepat: Temukan barang instan berdasarkan nama atau SKU.
+Fitur Utama
+Manajemen Barang: Cari dan edit informasi barang seperti nama, HPP, dan harga jual.
 
-Pembaruan Fleksibel: Perbarui nama, HPP, dan harga jual barang yang sudah ada dengan mudah.
+Manajemen Stok: Sesuaikan kuantitas (qty) stok barang dengan mudah.
 
-Interaksi Langsung: Antarmuka terminal yang ramah pengguna, ringkas, dan efisien.
+Laporan Penjualan:
 
-⚙️ Prasyarat
-Sebelum memulai, pastikan Anda telah menyiapkan:
+Buat laporan penjualan rinci untuk satu barang spesifik dalam rentang tanggal.
 
-Node.js: Pastikan Anda menggunakan versi 14.x atau yang lebih baru.
+Lacak transaksi yang berhasil dan yang dibatalkan (void).
 
-Token API Woogigs: Dapatkan token Anda dari Woogigs dan letakkan di dalam variabel TOKEN pada skrip.
+Dapatkan rekapitulasi total penjualan untuk semua barang dalam periode tertentu.
 
-⚡ Panduan Instalasi & Penggunaan
-Clone atau Unduh proyek ini ke komputer Anda.
+Analisis Stok: Lakukan audit untuk membandingkan stok tercatat di Woogigs dengan stok aktual dan temukan selisihnya.
 
-Buka Terminal di direktori proyek.
+Ekspor Data: Ekspor seluruh data stok ke dalam format .csv untuk analisis lebih lanjut di Google Sheets atau Excel.
 
-Instal dependensi dengan perintah:
+Cek Transaksi: Lihat detail lengkap dari sebuah transaksi berdasarkan nomor notanya.
+
+Prasyarat
+Sebelum menjalankan skrip, pastikan Anda telah menginstal:
+
+Node.js (disarankan versi LTS)
+
+NPM (biasanya sudah terinstal bersama Node.js)
+
+Instalasi
+Clone Repositori
+
+git clone [https://github.com/nama-anda/nama-repositori-anda.git](https://github.com/nama-anda/nama-repositori-anda.git)
+cd nama-repositori-anda
+
+Install Dependensi
+Jalankan perintah berikut di terminal untuk menginstal modul yang diperlukan (axios dan qs):
 
 npm install
 
-Jalankan skrip dengan perintah:
+Konfigurasi Token API
+
+Buka file woogigs_cli_tool.js dengan editor teks.
+
+Cari bagian // --- KONFIGURASI API ---.
+
+Ganti nilai TOKEN dengan token API valid Anda.
+
+const API_CONFIG = {
+  BASE_URL: "[https://backoffice.woogigs.com](https://backoffice.woogigs.com)",
+  TOKEN: "GANTI_DENGAN_TOKEN_ANDA", // <--- Ganti di sini
+};
+
+Simpan file tersebut.
+
+Cara Menjalankan
+Setelah instalasi selesai, jalankan skrip dari terminal dengan perintah:
 
 npm start
 
-Ikuti petunjuk yang muncul di layar untuk berinteraksi dengan API!
+atau
 
-📂 Struktur Proyek
-/woogigs-master-item-cli
-├── node_modules/         # Folder dependensi (dibuat otomatis)
-├── .gitignore            # Mengabaikan file yang tidak relevan
-├── package.json          # File konfigurasi proyek & dependensi
-└── index.js              # 📄 Skrip utama
+node woogigs_cli_tool.js
 
-🙏 Kontribusi
-Kami menyambut kontribusi Anda! Jika Anda menemukan bug atau memiliki ide fitur baru, silakan buka issue atau kirim pull request.
-
-⚠️ Catatan Penting
-Pencarian Lokal: API select tidak mendukung filter, jadi skrip ini akan mengambil semua data terlebih dahulu sebelum memfilternya secara lokal. Ini mungkin terasa lambat jika Anda memiliki data yang sangat besar.
-
-Payload Lengkap: API update mewajibkan pengiriman semua data barang, bahkan yang tidak berubah. Skrip ini sudah dirancang untuk menangani hal tersebut secara otomatis.
-
-Error Autentikasi: Jika Anda melihat error X-Auth-Token tidak ada, pastikan token API di skrip Anda sudah benar dan belum kedaluwarsa.
+Anda akan disambut dengan menu utama di mana Anda bisa memilih berbagai opsi yang tersedia.
