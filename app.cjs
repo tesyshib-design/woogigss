@@ -1,61 +1,16 @@
-/**
- * Skrip CLI (Command-Line Interface) untuk Manajemen Master Barang via API Woogigs.
- * Versi Revisi dengan Perbaikan dan Fitur Tambahan.
- *
- * Changelog:
- * - Refaktor: Konfigurasi API terpusat (BASE_URL, TOKEN).
- * - Perbaikan: Payload pada fungsi editItem dibuat lebih ringkas dan jelas.
- * - Peningkatan: Fungsi laporan dibuat lebih tangguh dengan validasi data dan logging.
- * - Perbaikan Bug: Memperbaiki format tanggal untuk menangani zona waktu dengan benar.
- * - Peningkatan UI: Menu utama dan output yang lebih rapi dan informatif.
- * - [UPDATE] Menu #4 diubah menjadi Laporan Rinci Penjualan per Barang (termasuk plat nomor).
- * - [UPDATE] Menu #5 diubah menjadi Laporan Penjualan Bulanan (Semua Item).
- * - [FIX] Penanganan respons API yang kosong pada fungsi laporan (Menu #4 & #5).
- * - [FITUR BARU] Menambahkan Menu #6 untuk Cek Detail Nota menggunakan endpoint `/transaction/detail`.
- * - [DEBUG] Menambahkan logging error yang lebih detail pada fungsi callApi.
- * - [FIX] Mengubah format tanggal pada fungsi laporan untuk menyertakan waktu (HH:mm:ss).
- * - [UPDATE] Mengembalikan input laporan ke rentang tanggal (dari tanggal-ke-tanggal).
- * - [FIX] Menambahkan parser JSON di callApi untuk menangani respons API berupa string.
- * - [FIX] Memperbaiki nama key dari 'details' menjadi 'detail' sesuai struktur API.
- * - [IMPROVEMENT] Logika deteksi plat nomor pada laporan disempurnakan.
- * - [FITUR BARU] Laporan Rinci Penjualan (Menu #4) sekarang memisahkan dan menyorot transaksi yang dibatalkan (void).
- * - [FITUR BARU] Menambahkan highlight kuning pada transaksi berhasil yang plat mobilnya pernah dibatalkan.
- * - [FITUR BARU] Laporan Rinci Penjualan (Menu #4) kini menampilkan stok awal dan stok akhir periode.
- * - [FITUR BARU] Menambahkan Menu #7 untuk analisis selisih stok secara otomatis.
- * - [FITUR BARU] Menambahkan Menu #8 untuk mengekspor seluruh data stok ke file CSV untuk analisis.
- *
- * * Fungsi:
- * 1. Mencari barang berdasarkan nama atau SKU.
- * 2. Mengedit nama, HPP, dan Harga Jual barang.
- * 3. Menyesuaikan kuantitas (qty) barang.
- * 4. Membuat laporan penjualan rinci untuk satu item spesifik dalam rentang tanggal.
- * 5. Membuat laporan rekap penjualan untuk semua item dalam rentang tanggal.
- * 6. Mengecek rincian item pada satu nota transaksi.
- * 7. Menganalisis selisih stok antara data Woogigs dan data aktual.
- * 8. Mengekspor semua data stok ke file CSV.
- *
- * * Prasyarat:
- * - Node.js
- * - Modul: `npm install axios qs`
- *
- * * Jalankan: `node woogigs_cli_tool.js`
- */
-
 const axios = require("axios");
 const readline = require("readline");
 const https = require("https");
 const qs = require("qs");
-const fs = require("fs"); // [BARU] Modul File System untuk menulis file
+const fs = require("fs"); 
 
 // --- KONFIGURASI API ---
 const API_CONFIG = {
   BASE_URL: "https://backoffice.woogigs.com",
-  // PENTING: Ganti dengan token API Anda yang valid.
   TOKEN: "67cebdfd4ed4e",
 };
 // --------------------
 
-// Gunakan agen HTTPS untuk menonaktifkan verifikasi SSL (hanya untuk pengembangan)
 const agent = new https.Agent({ rejectUnauthorized: false });
 
 const rl = readline.createInterface({
@@ -65,15 +20,13 @@ const rl = readline.createInterface({
 
 /**
  * Fungsi utama untuk melakukan panggilan API.
- * @param {string} endpoint - Endpoint API (contoh: "/master-item/select").
- * @param {object} payload - Data yang akan dikirim.
- * @returns {Promise<object|null>} - Mengembalikan data respons jika berhasil, atau null jika gagal.
  */
 async function callApi(endpoint, payload) {
   const url = `${API_CONFIG.BASE_URL}${endpoint}`;
   try {
     const fullPayload = { ...payload, token: API_CONFIG.TOKEN };
     
+    // Nonaktifkan debug log untuk production
     // console.log(`\n[DEBUG] Mengirim request ke: ${url}`);
     // console.log(`[DEBUG] Dengan payload:`, fullPayload);
 
@@ -83,7 +36,6 @@ async function callApi(endpoint, payload) {
     });
     
     let responseData = res.data;
-    // [FIX] Cek jika respons adalah string, lalu coba parse sebagai JSON.
     if (typeof responseData === 'string') {
         try {
             responseData = JSON.parse(responseData);
@@ -99,7 +51,6 @@ async function callApi(endpoint, payload) {
     
     return responseData;
   } catch (err) {
-    // [DEBUG] Menampilkan log error yang lebih lengkap
     console.error("\n❌ Terjadi kesalahan detail saat komunikasi API:");
     if (err.response) {
       console.error(`   -> Status Code: ${err.response.status}`);
@@ -109,7 +60,6 @@ async function callApi(endpoint, payload) {
       }
     } else if (err.request) {
       console.error("   -> Error Permintaan: Tidak ada respons diterima dari server.");
-      console.error("   -> Ini bisa berarti server down, URL salah, atau ada firewall/masalah jaringan.");
     } else {
       console.error("   -> Error Umum:", err.message);
     }
@@ -344,11 +294,7 @@ async function detailedItemSalesReport() {
             return;
         }
 
-        let totalQty = 0;
-        let totalVoidQty = 0;
-        const successfulTransactionDetails = [];
-        const voidedTransactionDetails = [];
-
+        let itemMovements = [];
         for (const transaction of transactions) {
           if (Array.isArray(transaction.detail)) {
             for (const itemDetail of transaction.detail) {
@@ -360,65 +306,77 @@ async function detailedItemSalesReport() {
                       plate = transaction.customer_name.split('/')[0].trim();
                   }
 
-                  const detail = {
+                  itemMovements.push({
                     receipt: transaction.receipt,
                     date: transaction.date,
                     plate: plate,
                     qty: qty,
-                  };
-
-                  if (transaction.void_status === 0) {
-                    totalQty += qty;
-                    successfulTransactionDetails.push(detail);
-                  } else {
-                    totalVoidQty += qty;
-                    voidedTransactionDetails.push(detail);
-                  }
+                    isVoid: transaction.void_status !== 0
+                  });
                 }
               }
             }
           }
         }
         
-        const stockBefore = currentStock + totalQty - totalVoidQty;
-        const voidedPlates = new Set(voidedTransactionDetails.map(trx => trx.plate));
+        itemMovements.sort((a, b) => new Date(a.date) - new Date(b.date));
+        
+        const totalSoldQty = itemMovements.filter(m => !m.isVoid).reduce((sum, m) => sum + m.qty, 0);
+        const totalVoidQty = itemMovements.filter(m => m.isVoid).reduce((sum, m) => sum + m.qty, 0);
+        
+        const stockBefore = currentStock + totalSoldQty - totalVoidQty;
+        
+        let runningStock = stockBefore;
+        const processedMovements = itemMovements.map(movement => {
+            const stockSebelum = runningStock;
+            if (movement.isVoid) {
+                runningStock += movement.qty;
+            } else {
+                runningStock -= movement.qty;
+            }
+            return { ...movement, stockSebelum, stockSesudah: runningStock };
+        });
 
-        if (successfulTransactionDetails.length > 0 || voidedTransactionDetails.length > 0) {
+        const successfulTransactions = processedMovements.filter(m => !m.isVoid);
+        const voidedTransactions = processedMovements.filter(m => m.isVoid);
+        const voidedPlates = new Set(voidedTransactions.map(trx => trx.plate));
+
+        if (successfulTransactions.length > 0 || voidedTransactions.length > 0) {
           console.log("\n✅ Laporan Penjualan Ditemukan:");
-          console.log("----------------------------------------------------------");
+          console.log("-----------------------------------------------------------------------------------");
           console.log(`  Nama Barang         : ${itemName}`);
           console.log(`  Periode             : ${dateStart} s/d ${dateEnd}`);
           console.log(`  Stok Awal Periode   : ${stockBefore}`);
-          console.log(`  Total Terjual       : ${totalQty}`);
+          console.log(`  Total Terjual       : ${totalSoldQty}`);
           if (totalVoidQty > 0) {
             console.log(`  Total Dibatalkan    : ${red}${totalVoidQty}${reset}`);
           }
           console.log(`  Stok Akhir (Saat Ini) : ${currentStock}`);
-          console.log("----------------------------------------------------------");
+          console.log("-----------------------------------------------------------------------------------");
           
-          if (successfulTransactionDetails.length > 0) {
+          if (successfulTransactions.length > 0) {
             console.log(" Rincian Transaksi Berhasil:");
-            console.log(` ${"Tanggal".padEnd(22)}| ${"Nomor Nota".padEnd(15)}| ${"Plat Mobil".padEnd(15)}| Qty`);
-            console.log("----------------------------------------------------------");
-            successfulTransactionDetails.forEach(trx => {
-              const line = ` ${trx.date.padEnd(22)}| ${trx.receipt.padEnd(15)}| ${trx.plate.padEnd(15)}| ${trx.qty}`;
+            console.log(` ${"Tanggal".padEnd(22)}| ${"Nota".padEnd(15)}| ${"Plat Mobil".padEnd(12)}| ${"Qty".padEnd(5)}| ${"Stok Sblm".padEnd(10)}| Stok Stlh`);
+            console.log("-----------------------------------------------------------------------------------");
+            successfulTransactions.forEach(trx => {
+              const line = ` ${trx.date.padEnd(22)}| ${trx.receipt.padEnd(15)}| ${trx.plate.padEnd(12)}| ${String(trx.qty).padEnd(5)}| ${String(trx.stockSebelum).padEnd(10)}| ${trx.stockSesudah}`;
               if (voidedPlates.has(trx.plate)) {
                   console.log(`${yellow}${line}${reset}  <-- Plat ini pernah dibatalkan`);
               } else {
                   console.log(line);
               }
             });
-            console.log("----------------------------------------------------------");
+            console.log("-----------------------------------------------------------------------------------");
           }
 
-          if (voidedTransactionDetails.length > 0) {
+          if (voidedTransactions.length > 0) {
             console.log(`\n ${red}Rincian Transaksi Dibatalkan (Void):${reset}`);
-            console.log(` ${"Tanggal".padEnd(22)}| ${"Nomor Nota".padEnd(15)}| ${"Plat Mobil".padEnd(15)}| Qty`);
-            console.log("----------------------------------------------------------");
-            voidedTransactionDetails.forEach(trx => {
-              console.log(`${red} ${trx.date.padEnd(22)}| ${trx.receipt.padEnd(15)}| ${trx.plate.padEnd(15)}| ${trx.qty}${reset}`);
+            console.log(` ${"Tanggal".padEnd(22)}| ${"Nota".padEnd(15)}| ${"Plat Mobil".padEnd(12)}| ${"Qty".padEnd(5)}| ${"Stok Sblm".padEnd(10)}| Stok Stlh`);
+            console.log("-----------------------------------------------------------------------------------");
+            voidedTransactions.forEach(trx => {
+              console.log(`${red} ${trx.date.padEnd(22)}| ${trx.receipt.padEnd(15)}| ${trx.plate.padEnd(12)}| ${String(trx.qty).padEnd(5)}| ${String(trx.stockSebelum).padEnd(10)}| ${trx.stockSesudah}${reset}`);
             });
-            console.log("----------------------------------------------------------");
+            console.log("-----------------------------------------------------------------------------------");
           }
 
         } else {
@@ -429,6 +387,7 @@ async function detailedItemSalesReport() {
     });
   });
 }
+
 
 /**
  * Rekap penjualan semua item dalam rentang tanggal.
@@ -545,7 +504,7 @@ async function checkReceiptDetails() {
 }
 
 /**
- * [FITUR BARU] Menganalisis selisih stok untuk satu barang.
+ * Menganalisis selisih stok untuk satu barang.
  */
 async function analyzeStockDiscrepancy() {
     const red = "\x1b[31m";
@@ -667,7 +626,6 @@ async function exportStockToCsv() {
     }
 
     const header = "SKU,Nama Barang,Qty Woogigs\n";
-    // Fungsi untuk memastikan data aman untuk CSV (menghandle koma)
     const sanitize = (value) => {
         if (typeof value === 'string' && value.includes(',')) {
             return `"${value}"`;
@@ -680,7 +638,7 @@ async function exportStockToCsv() {
     ).join("\n");
 
     const csvContent = header + rows;
-    const date = new Date().toISOString().split('T')[0]; // Format YYYY-MM-DD
+    const date = new Date().toISOString().split('T')[0];
     const fileName = `laporan_stok_woogigs_${date}.csv`;
 
     try {
@@ -703,55 +661,57 @@ function mainMenu() {
   const yellow = "\x1b[33m";
   const reset = "\x1b[0m";
 
-  console.log(`
-${green}==================================================${reset}
-${green}║${reset}       ${cyan}SERENDIPITY - WOOGIGS CLI TOOL${reset}       ${green}║${reset}
-${green}║${reset}           ${cyan}Developed by YaelahYuds${reset}            ${green}║${reset}
-${green}==================================================${reset}
- ${yellow}PILIH OPSI:${reset}
-   ${cyan}1.${reset} Cari Barang
-   ${cyan}2.${reset} Edit Barang (Nama, HPP, Harga)
-   ${cyan}3.${reset} Sesuaikan Stok (Qty)
-   ${cyan}4.${reset} Laporan Rinci Penjualan per Barang
-   ${cyan}5.${reset} Laporan Rekap Penjualan Bulanan
-   ${cyan}6.${reset} Cek Detail Nota
-   ${cyan}7.${reset} Analisis Selisih Stok
-   ${cyan}8.${reset} Ekspor Stok ke CSV
-   ${cyan}9.${reset} Keluar
-`);
+  const menuWidth = 60;
+  const title = "SERENDIPITY - WOOGIGS CLI TOOL";
+  const author = "Developed by YaelahYuds";
+
+  const centerText = (text, width) => {
+      const padding = Math.max(0, width - text.length);
+      const leftPad = Math.floor(padding / 2);
+      const rightPad = padding - leftPad;
+      return ' '.repeat(leftPad) + text + ' '.repeat(rightPad);
+  };
+
+  console.log(`\n${cyan}╔${'═'.repeat(menuWidth)}╗${reset}`);
+  console.log(`${cyan}║${reset}${centerText(title, menuWidth)}${cyan}║${reset}`);
+  console.log(`${cyan}║${reset}${centerText(author, menuWidth)}${cyan}║${reset}`);
+  console.log(`${cyan}╠${'═'.repeat(menuWidth)}╣${reset}`);
+
+  const options = [
+      "Cari Barang",
+      "Edit Barang (Nama, HPP, Harga)",
+      "Sesuaikan Stok (Qty)",
+      "Laporan Rinci Penjualan per Barang",
+      "Laporan Rekap Penjualan Bulanan",
+      "Cek Detail Nota",
+      "Analisis Selisih Stok",
+      "Ekspor Stok ke CSV",
+      "Keluar"
+  ];
+
+  options.forEach((opt, index) => {
+      const line = ` ${index + 1}. │ ${opt}`;
+      console.log(`${cyan}║${reset}${line.padEnd(menuWidth)} ${cyan}║${reset}`);
+  });
+
+  console.log(`${cyan}╚${'═'.repeat(menuWidth)}╝${reset}`);
   
-  rl.question(`${cyan}>>> ${reset}Masukkan pilihan (1-9): `, (option) => {
+  rl.question(`\n${yellow}>>> ${reset}Masukkan pilihan (1-${options.length}): `, (option) => {
     switch (option.trim()) {
-      case "1":
-        searchItems();
-        break;
-      case "2":
-        editItem();
-        break;
-      case "3":
-        adjustQty();
-        break;
-      case "4":
-        detailedItemSalesReport();
-        break;
-      case "5":
-        monthlySalesSummaryForAllItems();
-        break;
-      case "6":
-        checkReceiptDetails(); 
-        break;
-      case "7":
-        analyzeStockDiscrepancy(); // [BARU] Panggil fungsi analisis
-        break;
-      case "8":
-        exportStockToCsv(); 
-        break;
+      case "1": searchItems(); break;
+      case "2": editItem(); break;
+      case "3": adjustQty(); break;
+      case "4": detailedItemSalesReport(); break;
+      case "5": monthlySalesSummaryForAllItems(); break;
+      case "6": checkReceiptDetails(); break;
+      case "7": analyzeStockDiscrepancy(); break;
+      case "8": exportStockToCsv(); break;
       case "9":
         console.log(`\n${green}Terima kasih telah menggunakan tool ini!${reset}`);
         rl.close();
         break;
       default:
-        console.log(`\n${yellow}⚠️ Opsi tidak valid. Silakan pilih antara 1-9.${reset}`);
+        console.log(`\n${yellow}⚠️ Opsi tidak valid. Silakan pilih antara 1-${options.length}.${reset}`);
         mainMenu();
         break;
     }
