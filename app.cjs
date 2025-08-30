@@ -576,15 +576,6 @@ async function analyzeStockDiscrepancy() {
                         console.log(`  ${green}KESIMPULAN: Tidak ada selisih. Stok Woogigs sesuai dengan stok aktual.${reset}`);
                         mainMenu();
                     } else {
-                        const sign = discrepancy > 0 ? "+" : "";
-                        console.log(`  ${red}KESIMPULAN: Ditemukan selisih ${sign}${discrepancy} item.${reset}`);
-                        if (discrepancy > 0) {
-                            console.log(`  ${yellow}Saran: Stok aktual LEBIH BANYAK dari catatan Woogigs. Kemungkinan ada penerimaan barang yang belum dicatat atau kesalahan transaksi penjualan (jumlah barang terjual lebih besar dari seharusnya).${reset}`);
-                        } else {
-                             console.log(`  ${yellow}Saran: Stok aktual LEBIH SEDIKIT dari catatan Woogigs. Kemungkinan ada barang hilang/rusak, atau transaksi penjualan yang belum tercatat di sistem.${reset}`);
-                        }
-                        console.log("==========================================================");
-                        
                         rl.question("   -> Lakukan rekonsiliasi dengan data manual untuk menemukan perbedaan? (y/n): ", async (answer) => {
                             if (answer.trim().toLowerCase() === 'y') {
                                 await reconcileFromAnalysis(dateStart, dateEnd, transactions, nameToSearch);
@@ -632,7 +623,7 @@ async function performReconciliation(manualDataString, dateStart, dateEnd, woogi
     const rows = manualDataString.split('\n').slice(1);
     rows.forEach(row => {
         const cols = row.split(/\s{2,}|\t/);
-        if (cols.length >= 3) { // Membutuhkan setidaknya Tanggal, Nama, Qty
+        if (cols.length >= 3) {
             const dateParts = cols[0].trim().split('/');
             if (dateParts.length === 3) {
                 const dateStr = `${dateParts[2]}-${dateParts[1].padStart(2, '0')}-${dateParts[0].padStart(2, '0')}`;
@@ -643,7 +634,7 @@ async function performReconciliation(manualDataString, dateStart, dateEnd, woogi
                     const qty = parseFloat(cols[cols.length - 1].trim());
                     
                     let plate = 'N/A';
-                    if (cols.length > 3) { // Jika ada kolom keterangan
+                    if (cols.length > 3) {
                        const notes = cols[cols.length - 2].trim();
                        const plateParts = notes.split('|');
                        plate = plateParts[plateParts.length - 1].trim();
@@ -670,7 +661,7 @@ async function performReconciliation(manualDataString, dateStart, dateEnd, woogi
     }
 
     const woogigsEntries = [];
-    const voidedEntries = []; // [BARU] Menampung transaksi void
+    const voidedEntries = []; 
 
     for (const transaction of transactions) {
         if (Array.isArray(transaction.detail)) {
@@ -687,16 +678,14 @@ async function performReconciliation(manualDataString, dateStart, dateEnd, woogi
                     if (transaction.void_status === 0) {
                         woogigsEntries.push(entry);
                     } else {
-                        voidedEntries.push(entry); // [BARU] Pisahkan data void
+                        voidedEntries.push(entry);
                     }
                 }
             }
         }
     }
 
-    // Lakukan pencocokan
     for (const manualEntry of manualEntries) {
-        // Cari kecocokan satu-lawan-satu
         const matchIndex = woogigsEntries.findIndex(
             woogigsEntry => 
                 !woogigsEntry.found &&
@@ -714,7 +703,7 @@ async function performReconciliation(manualDataString, dateStart, dateEnd, woogi
     return {
         onlyInManual: manualEntries.filter(e => !e.found),
         onlyInWoogigs: woogigsEntries.filter(e => !e.found),
-        voidedInWoogigs: voidedEntries // [BARU] Kembalikan data void
+        voidedInWoogigs: voidedEntries
     };
 }
 
@@ -764,6 +753,9 @@ async function reconcileViaPaste() {
  */
 async function displayReconciliationResults(results, transactions) {
     const red = "\x1b[31m";
+    const yellow = "\x1b[33m";
+    const reset = "\x1b[0m";
+
     if (!results) {
         mainMenu();
         return;
@@ -783,18 +775,17 @@ async function displayReconciliationResults(results, transactions) {
     }
     
     if (results.onlyInManual.length > 0) {
-        console.log(`\nTransaksi yang HANYA ADA DI CATATAN MANUAL ANDA:`);
+        console.log(`\n${yellow}Transaksi yang HANYA ADA DI CATATAN MANUAL ANDA:${reset}`);
         console.log(` ${"Tanggal".padEnd(12)}| ${"Nama Barang".padEnd(40)}| Qty | Plat Mobil (Manual)`);
         console.log("-------------------------------------------------------------------------------------");
         results.onlyInManual.forEach(item => {
-            console.log(` ${item.date.padEnd(12)}| ${item.name.padEnd(40)}| ${String(item.qty).padEnd(3)} | ${item.plate}`);
+            console.log(`${yellow} ${item.date.padEnd(12)}| ${item.name.padEnd(40)}| ${String(item.qty).padEnd(3)} | ${item.plate}${reset}`);
         });
         console.log("-------------------------------------------------------------------------------------");
     }
 
-    // [BARU] Tampilkan transaksi yang dibatalkan
     if (results.voidedInWoogigs.length > 0) {
-        console.log(`\n${red}Transaksi yang DIBATALKAN (VOID) di Woogigs pada periode ini:${red}`);
+        console.log(`\n${red}Transaksi yang DIBATALKAN (VOID) di Woogigs pada periode ini:${reset}`);
         console.log(` ${"Tanggal".padEnd(12)}| ${"Nota".padEnd(15)}| ${"Nama Barang".padEnd(40)}| Qty | Plat Mobil`);
         console.log("-------------------------------------------------------------------------------------");
         results.voidedInWoogigs.forEach(item => {
