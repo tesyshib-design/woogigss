@@ -1,6 +1,6 @@
 const axios = require("axios");
 const readline = require("readline");
-const https = require("https");
+const https = require("https"); 
 const qs = require("qs");
 const fs = require("fs"); 
 
@@ -385,56 +385,68 @@ async function detailedItemSalesReport() {
 }
 
 /**
- * Menampilkan laporan transaksi harian dan detailnya.
+ * Mencari transaksi berdasarkan plat nomor.
  */
-async function dailyTransactionReport() {
+async function searchTransactionsByPlate() {
   const red = "\x1b[31m";
   const reset = "\x1b[0m";
 
-  rl.question("\nMasukkan Tanggal Laporan (YYYY-MM-DD): ", async (dateInput) => {
-    const date = dateInput.trim();
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(date)) {
-      console.log("⚠️ Format tanggal tidak valid.");
-      mainMenu();
-      return;
-    }
-
-    console.log(`\n⏳ Mengambil transaksi untuk tanggal ${date}...`);
-    const payload = { date_start: `${date} 00:00:00`, date_end: `${date} 23:59:59`, with_detail: 1 };
-    const transactionData = await callApi("/report-transaction/sales_complete", payload);
-
-    if (!transactionData || !transactionData.success || !Array.isArray(transactionData.data) || transactionData.data.length === 0) {
-      console.log(`❌ Tidak ada transaksi ditemukan untuk tanggal ${date}.`);
-      mainMenu();
-      return;
-    }
-
-    const transactions = transactionData.data.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-    console.log(`\n✅ Ditemukan ${transactions.length} transaksi pada tanggal ${date}:`);
-    console.log("-----------------------------------------------------------------------------------");
-    console.log(` ${"Waktu".padEnd(10)}| ${"Nomor Nota".padEnd(15)}| ${"Plat Mobil".padEnd(15)}| ${"Total".padEnd(12)}| Status`);
-    console.log("-----------------------------------------------------------------------------------");
-    
-    transactions.forEach(trx => {
-        let plate = trx.notes || 'N/A';
-        if ((!plate || plate === 'N/A') && trx.customer_name) {
-            plate = trx.customer_name.split('/')[0].trim();
+  rl.question("\nMasukkan Plat Nomor yang dicari: ", (plateNumber) => {
+    rl.question("Masukkan Tanggal Mulai (YYYY-MM-DD): ", (startDateInput) => {
+      rl.question("Masukkan Tanggal Akhir (YYYY-MM-DD): ", async (endDateInput) => {
+        const plateToSearch = plateNumber.trim().toLowerCase();
+        const dateStart = startDateInput.trim();
+        const dateEnd = endDateInput.trim();
+        
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!plateToSearch || !dateRegex.test(dateStart) || !dateRegex.test(dateEnd)) {
+          console.log("⚠️ Masukan plat nomor atau format tanggal (YYYY-MM-DD) tidak valid.");
+          mainMenu();
+          return;
         }
-        const time = trx.date.split(' ')[1];
-        const status = trx.void_status !== 0 ? `${red}DIBATALKAN${reset}` : 'Berhasil';
-        const line = ` ${time.padEnd(10)}| ${trx.receipt.padEnd(15)}| ${plate.padEnd(15)}| ${String(trx.total).padEnd(12)}| ${status}`;
-        console.log(line);
-    });
-    console.log("-----------------------------------------------------------------------------------");
 
-    await promptForReceiptDetails(transactions);
+        console.log(`\n⏳ Mengambil transaksi untuk plat '${plateNumber}' dari ${dateStart} hingga ${dateEnd}...`);
+        const payload = { date_start: `${dateStart} 00:00:00`, date_end: `${dateEnd} 23:59:59`, with_detail: 1 };
+        const transactionData = await callApi("/report-transaction/sales_complete", payload);
+
+        if (!transactionData || !transactionData.success || !Array.isArray(transactionData.data) || transactionData.data.length === 0) {
+          console.log(`❌ Tidak ada transaksi ditemukan untuk periode ini.`);
+          mainMenu();
+          return;
+        }
+
+        const matchingTransactions = transactionData.data.filter(trx => {
+            let plate = trx.notes || (trx.customer_name ? trx.customer_name.split('/')[0].trim() : '');
+            return plate.toLowerCase().includes(plateToSearch);
+        }).sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        if (matchingTransactions.length === 0) {
+            console.log(`\n⚠️ Tidak ada transaksi yang cocok dengan plat '${plateNumber}' pada periode ini.`);
+            mainMenu();
+            return;
+        }
+
+        console.log(`\n✅ Ditemukan ${matchingTransactions.length} transaksi untuk plat '${plateNumber}':`);
+        console.log("-----------------------------------------------------------------------------------");
+        console.log(` ${"Tanggal".padEnd(22)}| ${"Nomor Nota".padEnd(15)}| ${"Total".padEnd(12)}| Status`);
+        console.log("-----------------------------------------------------------------------------------");
+        
+        matchingTransactions.forEach(trx => {
+            const status = trx.void_status !== 0 ? `${red}DIBATALKAN${reset}` : 'Berhasil';
+            const line = ` ${trx.date.padEnd(22)}| ${trx.receipt.padEnd(15)}| ${String(trx.total).padEnd(12)}| ${status}`;
+            console.log(line);
+        });
+        console.log("-----------------------------------------------------------------------------------");
+
+        await promptForReceiptDetails(matchingTransactions);
+      });
+    });
   });
 }
 
+
 /**
- * [HELPER] Meminta input untuk melihat detail nota setelah laporan harian.
+ * [HELPER] Meminta input untuk melihat detail nota setelah laporan.
  */
 async function promptForReceiptDetails(transactions) {
   return new Promise((resolve) => {
@@ -450,7 +462,7 @@ async function promptForReceiptDetails(transactions) {
               const foundTrx = transactions.find(t => t.receipt === receiptNumber);
               if (!foundTrx) {
                   console.log(`⚠️ Nota dengan nomor '${receiptNumber}' tidak ditemukan dalam daftar.`);
-                  ask(); // Tanya lagi
+                  ask();
                   return;
               }
               
@@ -476,7 +488,7 @@ async function promptForReceiptDetails(transactions) {
               }
               console.log("-------------------------------------------------");
 
-              ask(); // Tanya lagi
+              ask();
           });
       };
       ask();
@@ -724,32 +736,8 @@ async function reconcileFromAnalysis(dateStart, dateEnd, woogigsTransactions, it
     await displayReconciliationResults(results, woogigsTransactions);
 }
 
-
 /**
- * Rekonsiliasi transaksi manual via tempel data.
- */
-async function reconcileViaPaste() {
-    rl.question("Masukkan Tanggal Mulai (YYYY-MM-DD) untuk perbandingan: ", (startDateInput) => {
-        rl.question("Masukkan Tanggal Akhir (YYYY-MM-DD) untuk perbandingan: ", async (endDateInput) => {
-            const dateStart = startDateInput.trim();
-            const dateEnd = endDateInput.trim();
-
-            const manualDataString = await getManualDataFromPaste();
-             if (!manualDataString) {
-                console.log("❌ Proses rekonsiliasi dibatalkan.");
-                mainMenu();
-                return;
-            }
-
-            const results = await performReconciliation(manualDataString, dateStart, dateEnd);
-            
-            await displayReconciliationResults(results, null);
-        });
-    });
-}
-
-/**
- * [HELPER] Menampilkan hasil rekonsiliasi dan mengekspor ke CSV jika perlu.
+ * [HELPER] Menampilkan hasil rekonsiliasi dan memungkinkan pengecekan detail nota.
  */
 async function displayReconciliationResults(results, transactions) {
     const red = "\x1b[31m";
@@ -887,9 +875,8 @@ function mainMenu() {
       "Edit Barang (Nama, HPP, Harga)",
       "Sesuaikan Stok (Qty)",
       "Laporan Rinci Penjualan per Barang",
-      "Laporan Transaksi Harian",
+      "Cari Transaksi per Plat Mobil",
       "Analisis Selisih Stok",
-      "Rekonsiliasi via Tempel Data",
       "Ekspor Stok ke CSV",
       "Keluar"
   ];
@@ -907,11 +894,10 @@ function mainMenu() {
       case "2": editItem(); break;
       case "3": adjustQty(); break;
       case "4": detailedItemSalesReport(); break;
-      case "5": dailyTransactionReport(); break;
+      case "5": searchTransactionsByPlate(); break;
       case "6": analyzeStockDiscrepancy(); break;
-      case "7": reconcileViaPaste(); break;
-      case "8": exportStockToCsv(); break;
-      case "9":
+      case "7": exportStockToCsv(); break;
+      case "8":
         console.log(`\n${green}Terima kasih telah menggunakan tool ini!${reset}`);
         rl.close();
         break;
