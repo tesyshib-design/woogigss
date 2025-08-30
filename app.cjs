@@ -603,14 +603,15 @@ function getManualDataFromPaste() {
         console.log("   Setelah selesai, ketik 'SELESAI' di baris baru dan tekan Enter.");
         
         let pastedData = [];
-        rl.on('line', function (line) {
+        const onLine = (line) => {
             if (line.trim().toLowerCase() === 'selesai') {
-                rl.removeAllListeners('line');
+                rl.removeListener('line', onLine);
                 resolve(pastedData.join('\n'));
             } else {
                 pastedData.push(line);
             }
-        });
+        };
+        rl.on('line', onLine);
     });
 }
 
@@ -624,7 +625,7 @@ async function performReconciliation(manualDataString, dateStart, dateEnd, woogi
     const manualData = new Map();
     const rows = manualDataString.split('\n').slice(1);
     rows.forEach(row => {
-        const cols = row.split('\t'); // Mengasumsikan data dipisahkan oleh TAB
+        const cols = row.split('\t'); // [FIX] Menggunakan Tab sebagai pemisah
         if (cols.length >= 3) {
             const dateParts = cols[0].trim().split('/');
             if(dateParts.length === 3) {
@@ -633,7 +634,7 @@ async function performReconciliation(manualDataString, dateStart, dateEnd, woogi
 
                 if (rowDateObj >= startDateObj && rowDateObj <= endDateObj) {
                     const name = cols[1].trim().toLowerCase();
-                    const qty = parseFloat(cols[2].trim());
+                    const qty = parseFloat(cols[cols.length - 1].trim()); // Ambil kolom terakhir untuk Qty
                     const key = `${dateStr}-${name}`;
                     if (!isNaN(qty)) {
                         manualData.set(key, { qty: (manualData.get(key)?.qty || 0) + qty, found: false });
@@ -723,6 +724,8 @@ async function reconcileFromAnalysis(dateStart, dateEnd, woogigsTransactions) {
     }
 
     const onlyInWoogigs = comparisonResults.filter(r => r.status === 'HANYA DI WOOGIGS');
+    const onlyInManual = comparisonResults.filter(r => r.status === 'HANYA DI MANUAL');
+    const differentQty = comparisonResults.filter(r => r.status === 'BEDA QTY');
 
     console.log("\n✅ Hasil Rekonsiliasi:");
     console.log("==========================================================");
@@ -735,8 +738,31 @@ async function reconcileFromAnalysis(dateStart, dateEnd, woogigsTransactions) {
             console.log(`${red} ${item.date.padEnd(12)}| ${item.name.padEnd(45)}| ${item.woogigsQty}${reset}`);
         });
          console.log("------------------------------------------------------------------");
-    } else {
-        console.log(`\nℹ️ Tidak ditemukan transaksi di Woogigs yang tidak ada di catatan manual Anda pada periode ini.`);
+    }
+    
+    if (onlyInManual.length > 0) {
+        console.log(`\n${yellow}Transaksi yang HANYA ADA DI CATATAN MANUAL ANDA:${reset}`);
+         console.log(` ${"Tanggal".padEnd(12)}| ${"Nama Barang".padEnd(45)}| Qty`);
+        console.log("------------------------------------------------------------------");
+        onlyInManual.forEach(item => {
+            console.log(`${yellow} ${item.date.padEnd(12)}| ${item.name.padEnd(45)}| ${item.manualQty}${reset}`);
+        });
+         console.log("------------------------------------------------------------------");
+    }
+
+    if (differentQty.length > 0) {
+        console.log(`\n${yellow}Transaksi dengan JUMLAH (QTY) BERBEDA:${reset}`);
+         console.log(` ${"Tanggal".padEnd(12)}| ${"Nama Barang".padEnd(45)}| Manual vs Woogigs`);
+        console.log("------------------------------------------------------------------");
+        differentQty.forEach(item => {
+            console.log(`${yellow} ${item.date.padEnd(12)}| ${item.name.padEnd(45)}| ${item.manualQty} vs ${item.woogigsQty}${reset}`);
+        });
+         console.log("------------------------------------------------------------------");
+    }
+
+
+    if(onlyInWoogigs.length === 0 && onlyInManual.length === 0 && differentQty.length === 0) {
+        console.log("\nℹ️ Tidak ditemukan perbedaan transaksi antara catatan manual dan Woogigs pada periode ini.");
     }
     
     mainMenu();
