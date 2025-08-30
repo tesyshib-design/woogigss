@@ -872,8 +872,8 @@ function mainMenu() {
 
   const options = [
       "Cari Barang",
-      "Edit Barang (Nama, HPP, Harga)",
-      "Sesuaikan Stok (Qty)",
+      "NoN aktif",
+      "NoN aktif",
       "Laporan Rinci Penjualan per Barang",
       "Cari Transaksi per Plat Mobil",
       "Analisis Selisih Stok",
