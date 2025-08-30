@@ -389,7 +389,7 @@ async function detailedItemSalesReport() {
 }
 
 /**
- * [FITUR BARU] Menampilkan laporan transaksi harian dan detailnya.
+ * Menampilkan laporan transaksi harian dan detailnya.
  */
 async function dailyTransactionReport() {
   const red = "\x1b[31m";
@@ -599,7 +599,7 @@ async function analyzeStockDiscrepancy() {
 function getManualDataFromPaste() {
     return new Promise((resolve) => {
         console.log("\n📋 Silakan salin (copy) data dari Google Sheet (termasuk header) dan tempel (paste) di sini.");
-        console.log("   Pastikan kolomnya adalah: Tanggal, NamaBarang, Qty");
+        console.log("   Pastikan kolomnya adalah: Tanggal, NamaBarang, ..., Qty");
         console.log("   Setelah selesai, ketik 'SELESAI' di baris baru dan tekan Enter.");
         
         let pastedData = [];
@@ -622,29 +622,28 @@ async function performReconciliation(manualDataString, dateStart, dateEnd, woogi
     const startDateObj = new Date(dateStart + 'T00:00:00');
     const endDateObj = new Date(dateEnd + 'T23:59:59');
 
-    const manualData = new Map();
-    const rows = manualDataString.split('\n').slice(1);
+    const manualEntries = [];
+    const rows = manualDataString.split('\n').slice(1); // Abaikan header
     rows.forEach(row => {
-        const cols = row.split('\t'); // [FIX] Menggunakan Tab sebagai pemisah
-        if (cols.length >= 3) {
+        const cols = row.split(/\s{2,}|\t/); // [FIX] Memisahkan dengan 2+ spasi ATAU tab
+        if (cols.length >= 2) {
             const dateParts = cols[0].trim().split('/');
-            if(dateParts.length === 3) {
+            if (dateParts.length === 3) {
                 const dateStr = `${dateParts[2]}-${dateParts[1].padStart(2, '0')}-${dateParts[0].padStart(2, '0')}`;
                 const rowDateObj = new Date(dateStr + 'T00:00:00');
 
                 if (rowDateObj >= startDateObj && rowDateObj <= endDateObj) {
                     const name = cols[1].trim().toLowerCase();
-                    const qty = parseFloat(cols[cols.length - 1].trim()); // Ambil kolom terakhir untuk Qty
-                    const key = `${dateStr}-${name}`;
+                    const qty = parseFloat(cols[cols.length - 1].trim());
                     if (!isNaN(qty)) {
-                        manualData.set(key, { qty: (manualData.get(key)?.qty || 0) + qty, found: false });
+                        manualEntries.push({ date: dateStr, name, qty, found: false });
                     }
                 }
             }
         }
     });
-    console.log(`\n✅ Berhasil memproses ${manualData.size} entri unik dari data manual Anda.`);
-    
+    console.log(`\n✅ Berhasil memproses ${manualEntries.length} baris dari data manual Anda.`);
+
     let transactions = woogigsTransactions;
     if (!transactions) {
         console.log("\n⏳ Mengambil data transaksi dari Woogigs...");
@@ -656,48 +655,42 @@ async function performReconciliation(manualDataString, dateStart, dateEnd, woogi
         }
         transactions = Array.isArray(transactionData.data) ? transactionData.data : [];
     }
-    
-    const woogigsData = new Map();
+
+    const woogigsEntries = [];
     for (const transaction of transactions) {
         if (transaction.void_status === 0 && Array.isArray(transaction.detail)) {
             for (const itemDetail of transaction.detail) {
                 const date = transaction.date.split(' ')[0];
                 const name = itemDetail.item_name.toLowerCase();
                 const qty = parseFloat(itemDetail.qty);
-                const key = `${date}-${name}`;
-                if(!isNaN(qty)){
-                    woogigsData.set(key, { qty: (woogigsData.get(key)?.qty || 0) + qty, found: false });
+                let plate = transaction.notes || (transaction.customer_name ? transaction.customer_name.split('/')[0].trim() : 'N/A');
+
+                if (!isNaN(qty)) {
+                    woogigsEntries.push({ date, name, qty, plate, found: false });
                 }
             }
         }
     }
-    console.log(`✅ Berhasil memproses ${woogigsData.size} entri unik dari Woogigs.`);
 
-    const allKeys = new Set([...manualData.keys(), ...woogigsData.keys()]);
-    let comparisonResults = [];
-    for (const key of allKeys) {
-        const manualEntry = manualData.get(key);
-        const woogigsEntry = woogigsData.get(key);
-        const [date, name] = key.split(/-(.+)/);
+    for (const manualEntry of manualEntries) {
+        const matchIndex = woogigsEntries.findIndex(
+            woogigsEntry => 
+                !woogigsEntry.found &&
+                woogigsEntry.date === manualEntry.date &&
+                woogigsEntry.name === manualEntry.name &&
+                woogigsEntry.qty === manualEntry.qty
+        );
 
-        let status = "";
-        if (manualEntry && woogigsEntry) {
-            status = manualEntry.qty === woogigsEntry.qty ? "COCOK" : "BEDA QTY";
-        } else if (manualEntry) {
-            status = "HANYA DI MANUAL";
-        } else {
-            status = "HANYA DI WOOGIGS";
+        if (matchIndex > -1) {
+            manualEntry.found = true;
+            woogigsEntries[matchIndex].found = true;
         }
-        
-        comparisonResults.push({
-            date, name,
-            manualQty: manualEntry?.qty || 0,
-            woogigsQty: woogigsEntry?.qty || 0,
-            status
-        });
     }
     
-    return comparisonResults.sort((a,b) => new Date(a.date) - new Date(b.date) || a.name.localeCompare(b.name));
+    return {
+        onlyInManual: manualEntries.filter(e => !e.found),
+        onlyInWoogigs: woogigsEntries.filter(e => !e.found)
+    };
 }
 
 
@@ -716,52 +709,37 @@ async function reconcileFromAnalysis(dateStart, dateEnd, woogigsTransactions) {
       return;
     }
 
-    const comparisonResults = await performReconciliation(manualDataString, dateStart, dateEnd, woogigsTransactions);
+    const results = await performReconciliation(manualDataString, dateStart, dateEnd, woogigsTransactions);
 
-    if(!comparisonResults) {
+    if(!results) {
         mainMenu();
         return;
     }
-
-    const onlyInWoogigs = comparisonResults.filter(r => r.status === 'HANYA DI WOOGIGS');
-    const onlyInManual = comparisonResults.filter(r => r.status === 'HANYA DI MANUAL');
-    const differentQty = comparisonResults.filter(r => r.status === 'BEDA QTY');
-
+    
     console.log("\n✅ Hasil Rekonsiliasi:");
     console.log("==========================================================");
 
-    if (onlyInWoogigs.length > 0) {
+    if (results.onlyInWoogigs.length > 0) {
         console.log(`\n${red}Transaksi yang HANYA ADA DI WOOGIGS (kemungkinan penyebab selisih):${reset}`);
-        console.log(` ${"Tanggal".padEnd(12)}| ${"Nama Barang".padEnd(45)}| Qty`);
-        console.log("------------------------------------------------------------------");
-        onlyInWoogigs.forEach(item => {
-            console.log(`${red} ${item.date.padEnd(12)}| ${item.name.padEnd(45)}| ${item.woogigsQty}${reset}`);
+        console.log(` ${"Tanggal".padEnd(12)}| ${"Nama Barang".padEnd(45)}| Qty | Plat Mobil`);
+        console.log("-----------------------------------------------------------------------------");
+        results.onlyInWoogigs.forEach(item => {
+            console.log(`${red} ${item.date.padEnd(12)}| ${item.name.padEnd(45)}| ${item.qty}   | ${item.plate}${reset}`);
         });
-         console.log("------------------------------------------------------------------");
+         console.log("-----------------------------------------------------------------------------");
     }
     
-    if (onlyInManual.length > 0) {
+    if (results.onlyInManual.length > 0) {
         console.log(`\n${yellow}Transaksi yang HANYA ADA DI CATATAN MANUAL ANDA:${reset}`);
-         console.log(` ${"Tanggal".padEnd(12)}| ${"Nama Barang".padEnd(45)}| Qty`);
+        console.log(` ${"Tanggal".padEnd(12)}| ${"Nama Barang".padEnd(45)}| Qty`);
         console.log("------------------------------------------------------------------");
-        onlyInManual.forEach(item => {
-            console.log(`${yellow} ${item.date.padEnd(12)}| ${item.name.padEnd(45)}| ${item.manualQty}${reset}`);
+        results.onlyInManual.forEach(item => {
+            console.log(`${yellow} ${item.date.padEnd(12)}| ${item.name.padEnd(45)}| ${item.qty}${reset}`);
         });
-         console.log("------------------------------------------------------------------");
+        console.log("------------------------------------------------------------------");
     }
 
-    if (differentQty.length > 0) {
-        console.log(`\n${yellow}Transaksi dengan JUMLAH (QTY) BERBEDA:${reset}`);
-         console.log(` ${"Tanggal".padEnd(12)}| ${"Nama Barang".padEnd(45)}| Manual vs Woogigs`);
-        console.log("------------------------------------------------------------------");
-        differentQty.forEach(item => {
-            console.log(`${yellow} ${item.date.padEnd(12)}| ${item.name.padEnd(45)}| ${item.manualQty} vs ${item.woogigsQty}${reset}`);
-        });
-         console.log("------------------------------------------------------------------");
-    }
-
-
-    if(onlyInWoogigs.length === 0 && onlyInManual.length === 0 && differentQty.length === 0) {
+    if(results.onlyInWoogigs.length === 0 && results.onlyInManual.length === 0) {
         console.log("\nℹ️ Tidak ditemukan perbedaan transaksi antara catatan manual dan Woogigs pada periode ini.");
     }
     
@@ -770,7 +748,7 @@ async function reconcileFromAnalysis(dateStart, dateEnd, woogigsTransactions) {
 
 
 /**
- * Rekonsiliasi transaksi manual ke file CSV.
+ * Rekonsiliasi transaksi manual via tempel data dan ekspor ke CSV.
  */
 async function reconcileViaPasteAndExport() {
     rl.question("Masukkan Tanggal Mulai (YYYY-MM-DD) untuk perbandingan: ", (startDateInput) => {
@@ -785,16 +763,35 @@ async function reconcileViaPasteAndExport() {
                 return;
             }
 
-            const comparisonResults = await performReconciliation(manualDataString, dateStart, dateEnd);
-            if (!comparisonResults) {
+            const results = await performReconciliation(manualDataString, dateStart, dateEnd);
+            if (!results) {
                 mainMenu();
                 return;
             }
+            
+            let allData = [];
+            results.onlyInManual.forEach(item => {
+                allData.push({ ...item, source: 'HANYA DI MANUAL'});
+            });
+             results.onlyInWoogigs.forEach(item => {
+                allData.push({ ...item, source: 'HANYA DI WOOGIGS'});
+            });
 
-            const header = "Tanggal,Nama Barang,Qty Manual,Qty Woogigs,Status\n";
-            const sanitize = (value) => `"${String(value).replace(/"/g, '""')}"`;
-            const csvRows = comparisonResults.map(r => 
-                [sanitize(r.date), sanitize(r.name), r.manualQty, r.woogigsQty, r.status].join(',')
+            allData.sort((a,b) => new Date(a.date) - new Date(b.date) || a.name.localeCompare(b.name));
+
+
+            const header = "Tanggal,Nama Barang,Qty Manual,Qty Woogigs,Plat Mobil,Status\n";
+            const sanitize = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+            
+            const csvRows = allData.map(r => 
+                [
+                    sanitize(r.date), 
+                    sanitize(r.name), 
+                    r.source === 'HANYA DI MANUAL' ? r.qty : 0,
+                    r.source === 'HANYA DI WOOGIGS' ? r.qty : 0,
+                    sanitize(r.plate),
+                    r.source
+                ].join(',')
             ).join('\n');
             
             const csvContent = header + csvRows;
@@ -804,7 +801,7 @@ async function reconcileViaPasteAndExport() {
             try {
                 fs.writeFileSync(fileName, csvContent);
                 console.log(`\n✅ Sukses! Laporan rekonsiliasi telah disimpan ke file: ${fileName}`);
-                console.log(`   Anda bisa membuka file ini di Google Sheets/Excel dan menggunakan Conditional Formatting pada kolom "Status" untuk memberi warna pada selisih.`);
+                console.log(`   Anda bisa membuka file ini di Google Sheets/Excel dan menggunakan filter pada kolom "Status" untuk melihat selisih.`);
             } catch (err) {
                 console.error("\n❌ Gagal menyimpan file CSV:", err);
             }
@@ -888,7 +885,7 @@ function mainMenu() {
       "Laporan Rinci Penjualan per Barang",
       "Laporan Transaksi Harian",
       "Analisis Selisih Stok",
-      "Rekonsiliasi via Tempel Data",
+      "Rekonsiliasi Transaksi ke CSV",
       "Ekspor Stok ke CSV",
       "Keluar"
   ];
