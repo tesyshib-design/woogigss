@@ -625,7 +625,7 @@ async function performReconciliation(manualDataString, dateStart, dateEnd, woogi
     const manualEntries = [];
     const rows = manualDataString.split('\n').slice(1); // Abaikan header
     rows.forEach(row => {
-        const cols = row.split(/\s{2,}|\t/); // [FIX] Memisahkan dengan 2+ spasi ATAU tab
+        const cols = row.split(/\s{2,}|\t/); 
         if (cols.length >= 2) {
             const dateParts = cols[0].trim().split('/');
             if (dateParts.length === 3) {
@@ -642,7 +642,6 @@ async function performReconciliation(manualDataString, dateStart, dateEnd, woogi
             }
         }
     });
-    console.log(`\n✅ Berhasil memproses ${manualEntries.length} baris dari data manual Anda.`);
 
     let transactions = woogigsTransactions;
     if (!transactions) {
@@ -666,7 +665,7 @@ async function performReconciliation(manualDataString, dateStart, dateEnd, woogi
                 let plate = transaction.notes || (transaction.customer_name ? transaction.customer_name.split('/')[0].trim() : 'N/A');
 
                 if (!isNaN(qty)) {
-                    woogigsEntries.push({ date, name, qty, plate, found: false });
+                    woogigsEntries.push({ date, name, qty, plate, receipt: transaction.receipt, found: false });
                 }
             }
         }
@@ -717,16 +716,16 @@ async function reconcileFromAnalysis(dateStart, dateEnd, woogigsTransactions) {
     }
     
     console.log("\n✅ Hasil Rekonsiliasi:");
-    console.log("==========================================================");
+    console.log("===============================================================================");
 
     if (results.onlyInWoogigs.length > 0) {
         console.log(`\n${red}Transaksi yang HANYA ADA DI WOOGIGS (kemungkinan penyebab selisih):${reset}`);
-        console.log(` ${"Tanggal".padEnd(12)}| ${"Nama Barang".padEnd(45)}| Qty | Plat Mobil`);
-        console.log("-----------------------------------------------------------------------------");
+        console.log(` ${"Tanggal".padEnd(12)}| ${"Nota".padEnd(15)}| ${"Nama Barang".padEnd(35)}| Qty | Plat Mobil`);
+        console.log("-------------------------------------------------------------------------------");
         results.onlyInWoogigs.forEach(item => {
-            console.log(`${red} ${item.date.padEnd(12)}| ${item.name.padEnd(45)}| ${item.qty}   | ${item.plate}${reset}`);
+            console.log(`${red} ${item.date.padEnd(12)}| ${item.receipt.padEnd(15)}| ${item.name.padEnd(35)}| ${String(item.qty).padEnd(3)} | ${item.plate}${reset}`);
         });
-         console.log("-----------------------------------------------------------------------------");
+         console.log("-------------------------------------------------------------------------------");
     }
     
     if (results.onlyInManual.length > 0) {
@@ -780,7 +779,7 @@ async function reconcileViaPasteAndExport() {
             allData.sort((a,b) => new Date(a.date) - new Date(b.date) || a.name.localeCompare(b.name));
 
 
-            const header = "Tanggal,Nama Barang,Qty Manual,Qty Woogigs,Plat Mobil,Status\n";
+            const header = "Tanggal,Nama Barang,Qty Manual,Qty Woogigs,Nota Woogigs,Plat Mobil,Status\n";
             const sanitize = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
             
             const csvRows = allData.map(r => 
@@ -789,6 +788,7 @@ async function reconcileViaPasteAndExport() {
                     sanitize(r.name), 
                     r.source === 'HANYA DI MANUAL' ? r.qty : 0,
                     r.source === 'HANYA DI WOOGIGS' ? r.qty : 0,
+                    sanitize(r.receipt),
                     sanitize(r.plate),
                     r.source
                 ].join(',')
