@@ -64,171 +64,6 @@ async function callApi(endpoint, payload) {
 }
 
 /**
- * Mencari item berdasarkan kata kunci (nama atau SKU).
- */
-async function searchItems() {
-  rl.question("\nMasukkan nama atau SKU barang untuk dicari: ", async (keyword) => {
-    if (!keyword.trim()) {
-        console.log("⚠️ Kata kunci tidak boleh kosong.");
-        mainMenu();
-        return;
-    }
-    console.log("\n⏳ Mencari barang...");
-    const data = await callApi("/master-item/select", {});
-
-    if (data && data.success && Array.isArray(data.data)) {
-      const filteredItems = data.data.filter(item => {
-        const keywordLower = keyword.trim().toLowerCase();
-        const nameMatch = item.name && item.name.toLowerCase().includes(keywordLower);
-        const skuMatch = item.sku && item.sku.toLowerCase().includes(keywordLower);
-        return nameMatch || skuMatch;
-      });
-
-      if (filteredItems.length > 0) {
-        console.log(`\n📦 Ditemukan ${filteredItems.length} hasil untuk "${keyword}":`);
-        console.log("-------------------------------------------------");
-        filteredItems.forEach((item) => {
-          console.log(`  Nama       : ${item.name}`);
-          console.log(`  SKU        : ${item.sku ?? 'N/A'}`);
-          console.log(`  Code       : ${item.code}`);
-          console.log(`  Harga Jual : ${item.price ?? 'N/A'}`);
-          console.log(`  HPP        : ${item.price_net ?? 'N/A'}`);
-          console.log(`  Stok (Qty) : ${item.qty ?? 'N/A'}`);
-          console.log("-------------------------------------------------");
-        });
-      } else {
-        console.log("\n⚠️ Tidak ada item yang cocok dengan kata kunci tersebut.");
-      }
-    } else {
-      console.log("\n⚠️ Gagal mengambil data item atau tidak ada item sama sekali.");
-    }
-    mainMenu();
-  });
-}
-
-/**
- * Mengedit detail item (nama, HPP, harga jual) berdasarkan 'code' item.
- */
-async function editItem() {
-  rl.question("\nMasukkan CODE item yang akan diedit: ", async (code) => {
-    const itemCode = code.trim();
-    if (!itemCode) {
-      console.log("⚠️ Code tidak boleh kosong.");
-      mainMenu();
-      return;
-    }
-
-    console.log(`\n⏳ Mengambil data item dengan kode: ${itemCode}...`);
-    const allData = await callApi("/master-item/select", {});
-
-    if (!allData || !allData.success || !Array.isArray(allData.data)) {
-      console.log("❌ Gagal mendapatkan daftar item.");
-      mainMenu();
-      return;
-    }
-
-    const itemToUpdate = allData.data.find(item => item.code && item.code.toString() === itemCode);
-
-    if (!itemToUpdate) {
-      console.log(`⚠️ Item dengan kode '${itemCode}' tidak ditemukan.`);
-      mainMenu();
-      return;
-    }
-
-    console.log("\n✅ Item ditemukan! Data saat ini:");
-    console.log(`   Nama       : ${itemToUpdate.name}`);
-    console.log(`   HPP        : ${itemToUpdate.price_net ?? 'N/A'}`);
-    console.log(`   Harga Jual : ${itemToUpdate.price ?? 'N/A'}`);
-    console.log("--- (Kosongkan input jika tidak ingin mengubah data) ---");
-
-    rl.question(`   -> Masukkan Nama baru: `, (name) => {
-      rl.question(`   -> Masukkan HPP baru: `, (hpp) => {
-        rl.question(`   -> Masukkan Harga Jual baru: `, async (hargaJual) => {
-          
-          const payload = {
-            ...itemToUpdate,
-            name: name.trim() || itemToUpdate.name,
-            price_net: hpp.trim() || itemToUpdate.price_net,
-            price: hargaJual.trim() || itemToUpdate.price,
-          };
-
-          console.log("\n⏳ Mengirim pembaruan...");
-          const data = await callApi("/master-item/update", payload);
-
-          if (data && data.success) {
-            console.log("\n✅ Sukses:", data.message || "Item berhasil diperbarui.");
-          } else {
-            console.log("\n❌ Gagal mengedit item.");
-          }
-          mainMenu();
-        });
-      });
-    });
-  });
-}
-
-/**
- * Menyesuaikan kuantitas (stok) item.
- */
-async function adjustQty() {
-  rl.question("\nMasukkan CODE item yang akan disesuaikan stoknya: ", async (code) => {
-    const itemCode = code.trim();
-    if (!itemCode) {
-      console.log("⚠️ Code tidak boleh kosong.");
-      mainMenu();
-      return;
-    }
-
-    console.log(`\n⏳ Mengambil data item dengan kode: ${itemCode}...`);
-    const allData = await callApi("/master-item/select", {});
-
-    if (!allData || !allData.success || !Array.isArray(allData.data)) {
-        console.log("❌ Gagal mendapatkan daftar item.");
-        mainMenu();
-        return;
-    }
-
-    const itemToUpdate = allData.data.find(item => item.code && item.code.toString() === itemCode);
-    if (!itemToUpdate) {
-        console.log(`⚠️ Item dengan kode '${itemCode}' tidak ditemukan.`);
-        mainMenu();
-        return;
-    }
-
-    const currentQty = parseFloat(itemToUpdate.qty) || 0;
-    console.log(`\n✅ Item ditemukan! [${itemToUpdate.name}]`);
-    console.log(`   Stok saat ini: ${currentQty}`);
-    console.log("---");
-
-    rl.question("   -> Masukkan jumlah penyesuaian (misal: 5 untuk menambah, -3 untuk mengurangi): ", async (adjustment) => {
-      const adjustmentValue = parseFloat(adjustment.trim());
-      if (isNaN(adjustmentValue)) {
-        console.log("⚠️ Jumlah penyesuaian harus berupa angka.");
-        mainMenu();
-        return;
-      }
-      
-      const newQty = currentQty + adjustmentValue;
-
-      const payload = {
-        ...itemToUpdate,
-        qty: newQty,
-      };
-
-      console.log(`\n⏳ Mengubah stok dari ${currentQty} menjadi ${newQty}...`);
-      const data = await callApi("/master-item/update", payload);
-
-      if (data && data.success) {
-        console.log("\n✅ Sukses:", data.message || "Kuantitas berhasil diperbarui.");
-      } else {
-        console.log("\n❌ Gagal memperbarui kuantitas.");
-      }
-      mainMenu();
-    });
-  });
-}
-
-/**
  * Laporan rinci penjualan untuk satu item spesifik dalam rentang tanggal.
  */
 async function detailedItemSalesReport() {
@@ -696,19 +531,33 @@ async function performReconciliation(manualDataString, dateStart, dateEnd, woogi
             }
         }
     }
+    
+    // Agregasi Data
+    const aggregate = (entries) => {
+        const map = new Map();
+        for(const entry of entries) {
+            const key = `${entry.date}_${entry.name}`;
+            if (!map.has(key)) {
+                map.set(key, { totalQty: 0, details: [] });
+            }
+            const group = map.get(key);
+            group.totalQty += entry.qty;
+            group.details.push(entry);
+        }
+        return map;
+    };
+    
+    const manualAggregated = aggregate(manualEntries);
+    const woogigsAggregated = aggregate(woogigsEntries);
 
-    for (const manualEntry of manualEntries) {
-        const matchIndex = woogigsEntries.findIndex(
-            woogigsEntry => 
-                !woogigsEntry.found &&
-                woogigsEntry.date === manualEntry.date &&
-                woogigsEntry.name === manualEntry.name &&
-                woogigsEntry.qty === manualEntry.qty
-        );
-
-        if (matchIndex > -1) {
-            manualEntry.found = true;
-            woogigsEntries[matchIndex].found = true;
+    // Cocokkan berdasarkan total harian
+    for (const [key, manualGroup] of manualAggregated.entries()) {
+        if (woogigsAggregated.has(key)) {
+            const woogigsGroup = woogigsAggregated.get(key);
+            if (manualGroup.totalQty === woogigsGroup.totalQty) {
+                manualGroup.details.forEach(d => d.found = true);
+                woogigsGroup.details.forEach(d => d.found = true);
+            }
         }
     }
     
@@ -773,6 +622,8 @@ async function displayReconciliationResults(results, transactions) {
     }
 
     if (results.voidedInWoogigs.length > 0) {
+        const red = "\x1b[31m";
+        const reset = "\x1b[0m";
         console.log(`\n${red}Transaksi yang DIBATALKAN (VOID) di Woogigs pada periode ini:${reset}`);
         console.log(` ${"Tanggal".padEnd(12)}| ${"Nota".padEnd(15)}| ${"Nama Barang".padEnd(40)}| Qty | Plat Mobil`);
         console.log("-------------------------------------------------------------------------------------");
@@ -804,47 +655,6 @@ async function displayReconciliationResults(results, transactions) {
     await promptForReceiptDetails(allTransactions || []);
 }
 
-
-/**
- * Mengekspor seluruh data stok ke file CSV.
- */
-async function exportStockToCsv() {
-    console.log("\n⏳ Mengambil seluruh data master barang untuk ekspor...");
-    const data = await callApi("/master-item/select", {});
-
-    if (!data || !data.success || !Array.isArray(data.data)) {
-        console.log("❌ Gagal mengambil data item untuk diekspor.");
-        mainMenu();
-        return;
-    }
-
-    const header = "SKU,Nama Barang,Qty Woogigs\n";
-    const sanitize = (value) => {
-        if (typeof value === 'string' && value.includes(',')) {
-            return `"${value}"`;
-        }
-        return value ?? '';
-    };
-    
-    const rows = data.data.map(item => 
-        `${sanitize(item.sku)},${sanitize(item.name)},${item.qty || 0}`
-    ).join("\n");
-
-    const csvContent = header + rows;
-    const date = new Date().toISOString().split('T')[0];
-    const fileName = `laporan_stok_woogigs_${date}.csv`;
-
-    try {
-        fs.writeFileSync(fileName, csvContent);
-        console.log(`\n✅ Sukses! Data stok telah diekspor ke file: ${fileName}`);
-    } catch (err) {
-        console.error("\n❌ Gagal menyimpan file CSV:", err);
-    }
-    
-    mainMenu();
-}
-
-
 /**
  * Fungsi menu utama untuk navigasi.
  */
@@ -852,6 +662,8 @@ function mainMenu() {
   const green = "\x1b[32m";
   const cyan = "\x1b[36m";
   const yellow = "\x1b[33m";
+  const red = "\x1b[31m";
+  const grey = "\x1b[90m";
   const reset = "\x1b[0m";
 
   const menuWidth = 60;
@@ -871,33 +683,44 @@ function mainMenu() {
   console.log(`${cyan}╠${'═'.repeat(menuWidth)}╣${reset}`);
 
   const options = [
-      "Cari Barang",
-      "NoN aktif",
-      "NoN aktif",
+      "Query Data Item",
+      "NoN AKTIF",
+      "NoN AKTIF",
       "Laporan Rinci Penjualan per Barang",
       "Cari Transaksi per Plat Mobil",
       "Analisis Selisih Stok",
-      "Ekspor Stok ke CSV",
       "Keluar"
   ];
 
   options.forEach((opt, index) => {
-      const line = ` ${String(index + 1).padStart(2)}. │ ${opt}`;
-      console.log(`${cyan}║${reset}${line.padEnd(menuWidth)} ${cyan}║${reset}`);
+      const num = String(index + 1).padStart(2);
+      const lineText = ` ${num}. │ ${opt}`;
+      const padding = ' '.repeat(menuWidth - lineText.length);
+      
+      if (index < 3) {
+          console.log(`${cyan}║${reset}${grey}${lineText}${padding}${reset}${cyan}║${reset}`);
+      } else {
+          const coloredLine = ` ${cyan}${num}.${reset} │ ${opt}`;
+          const visualLength = ` ${num}. | ${opt}`.length;
+          const newPadding = ' '.repeat(menuWidth - visualLength);
+          console.log(`${cyan}║${reset}${coloredLine}${newPadding}${cyan}║${reset}`);
+      }
   });
 
   console.log(`${cyan}╚${'═'.repeat(menuWidth)}╝${reset}`);
   
   rl.question(`\n${yellow}>>> ${reset}Masukkan pilihan (1-${options.length}): `, (option) => {
     switch (option.trim()) {
-      case "1": searchItems(); break;
-      case "2": editItem(); break;
-      case "3": adjustQty(); break;
+      case "1":
+      case "2":
+      case "3":
+        console.log(`\n${red}⚠️ Anda tidak memiliki izin untuk mengakses fitur ini.${reset}`);
+        setTimeout(mainMenu, 1500);
+        break;
       case "4": detailedItemSalesReport(); break;
       case "5": searchTransactionsByPlate(); break;
       case "6": analyzeStockDiscrepancy(); break;
-      case "7": exportStockToCsv(); break;
-      case "8":
+      case "7":
         console.log(`\n${green}Terima kasih telah menggunakan tool ini!${reset}`);
         rl.close();
         break;
